@@ -10,7 +10,6 @@ let layoutRaf = null;
 
 // easeInOutCubic
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
-import { defaultNodes, defaultEdges, defaultSelectedNodeId } from '../data/mockData';
 import { API_BASE } from '../types/api';
 
 const useGraphStore = create((set, get) => ({
