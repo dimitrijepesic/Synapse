@@ -218,6 +218,9 @@ export default function ControlFlow() {
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
+  // Unused-node visibility: hidden by default, user can toggle to show
+  const [showUnusedNodes, setShowUnusedNodes] = useState(false);
+
   // Codebase overview state
   const [overview, setOverview] = useState(null);
   const [overviewLoading, setOverviewLoading] = useState(false);
@@ -311,6 +314,11 @@ export default function ControlFlow() {
     }
     return false;
   }, [classFilter]);
+
+  // Visible nodes: hide unused (0-in, 0-out) nodes unless toggled on
+  const visibleNodes = showUnusedNodes ? nodes : nodes.filter((n) => !isUnusedNode(n));
+  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+  const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
 
   // --- Zoom / Pan state (persisted per view in graphStore.viewCameras) ---
   const canvasRef = useRef(null);
@@ -490,10 +498,13 @@ export default function ControlFlow() {
           hotspotsLoading={hotspotsLoading}
           onDeadCode={handleDeadCode}
           deadCodeLoading={deadCodeLoading}
+          showUnusedNodes={showUnusedNodes}
+          onToggleUnused={() => setShowUnusedNodes((v) => !v)}
+          unusedCount={nodes.filter(isUnusedNode).length}
           classFilter={classFilter}
           onToggleClassFilter={toggleClassFilter}
           onClearClassFilter={() => setClassFilter(new Set())}
-          visibleNodes={nodes}
+          visibleNodes={visibleNodes}
         />
 
         <main className="flex-1 flex min-h-0 relative">
@@ -592,8 +603,8 @@ export default function ControlFlow() {
                       const tgtExpanded = tgtCluster && expandedClusters.has(tgtCluster);
                       if (!srcExpanded && !tgtExpanded) return null;
 
-                      const sourceNode = nodes.find((n) => n.id === edge.source);
-                      const targetNode = nodes.find((n) => n.id === edge.target);
+                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
+                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
                       if (!sourceNode || !targetNode) return null;
 
                       if (edge.source === edge.target) {
@@ -633,7 +644,7 @@ export default function ControlFlow() {
                   })}
 
                   {/* Nodes inside expanded clusters */}
-                  {nodes.map((node) => {
+                  {visibleNodes.map((node) => {
                     const clusterId = nodeClusterMap[node.id];
                     if (!clusterId || !expandedClusters.has(clusterId)) return null;
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
@@ -644,7 +655,7 @@ export default function ControlFlow() {
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={edges}
+                        edges={visibleEdges}
                         onSelect={() => selectNode(node.id)}
                         onOpenCode={() => handleFunctionSelect(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
@@ -659,9 +670,9 @@ export default function ControlFlow() {
 
                   {/* SVG edges */}
                   <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
-                    {edges.map((edge) => {
-                      const sourceNode = nodes.find((n) => n.id === edge.source);
-                      const targetNode = nodes.find((n) => n.id === edge.target);
+                    {visibleEdges.map((edge) => {
+                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
+                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
                       if (!sourceNode || !targetNode) return null;
                       if (edge.source === edge.target) {
                         return (
@@ -684,7 +695,7 @@ export default function ControlFlow() {
                   </svg>
 
                   {/* Nodes */}
-                  {nodes.map((node) => {
+                  {visibleNodes.map((node) => {
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
                     const dimByFilter = !matchesClassFilter(node);
                     return (
@@ -693,7 +704,7 @@ export default function ControlFlow() {
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={edges}
+                        edges={visibleEdges}
                         onSelect={() => selectNode(node.id)}
                         onOpenCode={() => handleFunctionSelect(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
@@ -707,7 +718,7 @@ export default function ControlFlow() {
 
             {/* Minimap — stays fixed in viewport */}
             <Minimap
-              nodes={nodes}
+              nodes={visibleNodes}
               selectedNodeId={selectedNodeId}
               zoom={zoom}
               pan={pan}
@@ -939,6 +950,9 @@ function SideNav({
   hotspotsLoading,
   onDeadCode,
   deadCodeLoading,
+  showUnusedNodes,
+  onToggleUnused,
+  unusedCount,
   classFilter,
   onToggleClassFilter,
   onClearClassFilter,
@@ -1048,6 +1062,25 @@ function SideNav({
           </button>
 
           <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* Unused-node visibility toggle */}
+          <button
+            onClick={onToggleUnused}
+            className={`${railBtnBase} relative ${
+              showUnusedNodes
+                ? 'text-rose-600 bg-rose-50'
+                : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
+            }`}
+            title={showUnusedNodes ? 'Hide unused nodes' : `Show unused nodes (${unusedCount} hidden)`}
+          >
+            <span className={railIcon}>{showUnusedNodes ? 'visibility' : 'visibility_off'}</span>
+            <span className={railLabel}>Unused</span>
+            {unusedCount > 0 && (
+              <span className="absolute top-0.5 right-1 text-[9px] px-1 rounded-full bg-gray-200 text-gray-600 font-medium leading-tight">
+                {unusedCount}
+              </span>
+            )}
+          </button>
 
           {/* Classification chips: Unused / Entry / Leaf */}
           <div className="w-full flex flex-col items-stretch gap-1 mt-1 px-0.5">
