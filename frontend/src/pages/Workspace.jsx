@@ -267,6 +267,7 @@ export default function Workspace() {
   // Track canvas dimensions reactively
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
   useEffect(() => {
+    if (graphLoading || graphError) return;
     const el = canvasRef.current;
     if (!el) return;
     const measure = () => setCanvasSize({ w: el.clientWidth, h: el.clientHeight });
@@ -274,7 +275,7 @@ export default function Workspace() {
     const obs = new ResizeObserver(measure);
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [graphLoading, graphError]);
 
   // Run dagre auto-layout once on mount so the initial graph isn't a tangle
   useEffect(() => {
@@ -284,6 +285,7 @@ export default function Workspace() {
 
   // Wheel: pinch-to-zoom (ctrlKey) or two-finger-scroll to pan
   useEffect(() => {
+    if (graphLoading || graphError) return;
     const el = canvasRef.current;
     if (!el) return;
     const handler = (e) => {
@@ -308,7 +310,7 @@ export default function Workspace() {
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
-  }, []);
+  }, [graphLoading, graphError]);
 
   // Canvas mousedown: pan (drag) or deselect (click)
   const handleCanvasMouseDown = useCallback(
@@ -407,7 +409,7 @@ export default function Workspace() {
     <div className="flex flex-col h-screen font-body-md text-body-md text-on-surface overflow-hidden" style={{ backgroundColor: '#f9fafb' }}>
       <Header activePage="workspace" />
 
-      <div className="flex flex-1 pt-14 sm:pt-16 h-full overflow-hidden">
+      <div className="flex flex-1 pt-14 sm:pt-16 min-h-0 overflow-hidden">
         {/* Sidebar — icon rail + expandable explorer panel */}
         <SideNav
           project={project}
@@ -421,7 +423,7 @@ export default function Workspace() {
           onFunctionSelect={handleFunctionSelect}
         />
 
-        <main className="flex-1 flex h-full relative">
+        <main className="flex-1 flex min-h-0 relative">
           {/* Top-left toolbar: Auto Layout + classification filters */}
           <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-10 flex items-center gap-2">
             <button
@@ -791,7 +793,7 @@ function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNo
   const panelTitle = activeTab === 'functions' ? 'Functions' : 'Explorer';
 
   return (
-    <div className="flex h-full shrink-0 z-40">
+    <div className="flex min-h-0 shrink-0 z-40">
       {/* Icon rail */}
       <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-4 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
         {/* Tab buttons — top */}
@@ -1245,11 +1247,15 @@ function CodePanel({ node, open, onClose }) {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
+  const [displayedSummary, setDisplayedSummary] = useState('');
+  const [summaryRevealed, setSummaryRevealed] = useState(false);
   // Impact analysis state
   const [impact, setImpact] = useState(null);
   const [impactNarrative, setImpactNarrative] = useState(null);
   const [impactLoading, setImpactLoading] = useState(false);
   const [impactError, setImpactError] = useState(null);
+  const [displayedImpact, setDisplayedImpact] = useState('');
+  const [impactRevealed, setImpactRevealed] = useState(false);
   const MIN_W = 280;
   const MAX_W = 700;
 
@@ -1263,6 +1269,69 @@ function CodePanel({ node, open, onClose }) {
     setImpactError(null);
     setImpactLoading(false);
   }, [node?.id]);
+
+  // Typewriter + smooth height-reveal for AI summary
+  useEffect(() => {
+    if (!summary) {
+      setDisplayedSummary('');
+      setSummaryRevealed(false);
+      return;
+    }
+    setDisplayedSummary('');
+    setSummaryRevealed(false);
+    // Two RAFs: commit the collapsed state, then flip to revealed so the
+    // grid-rows transition fires from 0fr → 1fr.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setSummaryRevealed(true));
+    });
+    // Begin typing slightly after the height-reveal starts.
+    let i = 0;
+    const typingDelay = setTimeout(() => {
+      const id = setInterval(() => {
+        i = Math.min(i + 2, summary.length);
+        setDisplayedSummary(summary.slice(0, i));
+        if (i >= summary.length) clearInterval(id);
+      }, 15);
+      typingDelay.intervalId = id;
+    }, 120);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(typingDelay);
+      if (typingDelay.intervalId) clearInterval(typingDelay.intervalId);
+    };
+  }, [summary]);
+
+  // Typewriter + smooth height-reveal for impact narrative
+  useEffect(() => {
+    if (!impactNarrative) {
+      setDisplayedImpact('');
+      setImpactRevealed(false);
+      return;
+    }
+    setDisplayedImpact('');
+    setImpactRevealed(false);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setImpactRevealed(true));
+    });
+    let i = 0;
+    const typingDelay = setTimeout(() => {
+      const id = setInterval(() => {
+        i = Math.min(i + 2, impactNarrative.length);
+        setDisplayedImpact(impactNarrative.slice(0, i));
+        if (i >= impactNarrative.length) clearInterval(id);
+      }, 15);
+      typingDelay.intervalId = id;
+    }, 120);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(typingDelay);
+      if (typingDelay.intervalId) clearInterval(typingDelay.intervalId);
+    };
+  }, [impactNarrative]);
 
   const handleSummarize = useCallback(async () => {
     if (!node?.id) return;
@@ -1377,15 +1446,17 @@ function CodePanel({ node, open, onClose }) {
         </div>
       </div>
 
+      {/* Scrollable body: Node Analysis + Code view */}
+      <div className="flex-1 min-h-0 overflow-y-auto bg-white">
       {/* Node Analysis — top */}
-      <div className="border-b border-gray-200 bg-white flex flex-col shrink-0">
+      <div className="border-b border-gray-200 bg-white flex flex-col">
         <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
           <span className="font-label-sm text-gray-500 uppercase tracking-wider text-[10px]">Node Analysis</span>
           <div className="flex gap-1.5">
             <button
               onClick={handleSummarize}
               disabled={!node || summaryLoading}
-              className="flex items-center gap-1 text-[10px] font-label-sm text-primary hover:text-gray-900 transition-colors bg-primary/10 px-2 py-1 rounded border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-[10px] font-label-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-2 py-1 rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className={`material-symbols-outlined text-[12px] ${summaryLoading ? 'animate-spin' : ''}`}>
                 {summaryLoading ? 'progress_activity' : 'auto_awesome'}
@@ -1395,7 +1466,7 @@ function CodePanel({ node, open, onClose }) {
             <button
               onClick={handleImpactAnalysis}
               disabled={!node || impactLoading}
-              className="flex items-center gap-1 text-[10px] font-label-sm text-amber-700 hover:text-gray-900 transition-colors bg-amber-50 px-2 py-1 rounded border border-amber-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-[10px] font-label-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-2 py-1 rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className={`material-symbols-outlined text-[12px] ${impactLoading ? 'animate-spin' : ''}`}>
                 {impactLoading ? 'progress_activity' : 'bolt'}
@@ -1412,12 +1483,32 @@ function CodePanel({ node, open, onClose }) {
                 <p className="font-body-md text-sm text-rose-600 mb-3">{summaryError}</p>
               )}
               {summary && (
-                <div className="mb-3 px-3 py-2 rounded bg-primary/5 border border-primary/20">
+                <div className="mb-3">
                   <div className="flex items-center gap-1 mb-1.5">
                     <span className="material-symbols-outlined text-[12px] text-primary">auto_awesome</span>
                     <span className="font-label-sm text-[10px] text-primary uppercase tracking-wider">AI Summary</span>
                   </div>
-                  <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap">{summary}</p>
+                  <div
+                    className="grid transition-[grid-template-rows,opacity] duration-500 ease-out"
+                    style={{ gridTemplateRows: summaryRevealed ? '1fr' : '0fr', opacity: summaryRevealed ? 1 : 0 }}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div
+                        className="relative text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap"
+                        style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
+                      >
+                        {/* Invisible full text reserves final height up-front */}
+                        <p aria-hidden className="invisible m-0">{summary}</p>
+                        {/* Visible typed portion overlays at the same position */}
+                        <p className="absolute inset-0 m-0">
+                          {displayedSummary}
+                          {displayedSummary.length < summary.length && (
+                            <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
               {impactError && (
@@ -1430,10 +1521,28 @@ function CodePanel({ node, open, onClose }) {
                     <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">Impact Analysis</span>
                   </div>
                   {impactNarrative && (
-                    <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap mb-2">{impactNarrative}</p>
+                    <div
+                      className="grid transition-[grid-template-rows,opacity] duration-500 ease-out mb-2"
+                      style={{ gridTemplateRows: impactRevealed ? '1fr' : '0fr', opacity: impactRevealed ? 1 : 0 }}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <div
+                          className="relative text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap"
+                          style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
+                        >
+                          <p aria-hidden className="invisible m-0">{impactNarrative}</p>
+                          <p className="absolute inset-0 m-0">
+                            {displayedImpact}
+                            {displayedImpact.length < impactNarrative.length && (
+                              <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                  {impact && impact.affected && impact.affected.length > 0 && (
-                    <div className="mt-1.5">
+                  {impact && impact.affected && impact.affected.length > 0 && (!impactNarrative || displayedImpact.length === impactNarrative.length) && (
+                    <div className="mt-1.5 animate-[fadeIn_300ms_ease-out]">
                       <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">
                         Affected nodes ({impact.affected.length})
                       </span>
@@ -1449,8 +1558,8 @@ function CodePanel({ node, open, onClose }) {
                       </div>
                     </div>
                   )}
-                  {impact && impact.affected && impact.affected.length === 0 && (
-                    <p className="text-[11px] text-gray-500">No downstream nodes affected.</p>
+                  {impact && impact.affected && impact.affected.length === 0 && (!impactNarrative || displayedImpact.length === impactNarrative.length) && (
+                    <p className="text-[11px] text-gray-500 animate-[fadeIn_300ms_ease-out]">No downstream nodes affected.</p>
                   )}
                 </div>
               )}
@@ -1493,7 +1602,7 @@ function CodePanel({ node, open, onClose }) {
       </div>
 
       {/* Code view — contained block */}
-      <div className="flex-1 overflow-y-auto p-4 bg-white relative">
+      <div className="p-4 bg-white relative">
         {node ? (
           <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 py-1.5 border-b border-gray-200 bg-gray-100/60 flex items-center gap-2">
@@ -1507,6 +1616,7 @@ function CodePanel({ node, open, onClose }) {
         ) : (
           <p className="text-gray-400 text-sm font-label-sm">Click a node to view its source code.</p>
         )}
+      </div>
       </div>
     </aside>
   );
