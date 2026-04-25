@@ -146,7 +146,7 @@ function computeSelfLoopArrow(node) {
 // --- Main Workspace ---
 
 export default function Workspace() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -467,6 +467,16 @@ export default function Workspace() {
               </span>
               <span className="font-label-sm">Dead Code</span>
             </button>
+            <button
+              onClick={toggleClusterView}
+              className={`glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors ${
+                clusterView ? 'bg-indigo-600 text-white hover:bg-indigo-700' : 'text-gray-500 hover:text-gray-900'
+              }`}
+              title={clusterView ? 'Switch to flat view' : 'Switch to package view'}
+            >
+              <span className="material-symbols-outlined text-[16px]">package_2</span>
+              <span className="font-label-sm">Packages</span>
+            </button>
             <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
               {CANVAS_FILTERS.map((f) => {
                 const on = classFilter.has(f.id);
@@ -509,60 +519,162 @@ export default function Workspace() {
           >
             {/* Transform wrapper — everything inside zooms/pans together */}
             <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
-              {/* SVG edges */}
-              <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
-                {edges.map((edge) => {
-                  const sourceNode = nodes.find((n) => n.id === edge.source);
-                  const targetNode = nodes.find((n) => n.id === edge.target);
-                  if (!sourceNode || !targetNode) return null;
-                  if (edge.source === edge.target) {
-                    return (
-                      <g key={edge.id}>
-                        <path
-                          className={getEdgeClasses(edge, selectedNodeId)}
-                          d={computeSelfLoopPath(sourceNode)}
-                        />
-                        <path
-                          className={getEdgeClasses(edge, selectedNodeId)}
-                          d={computeSelfLoopArrow(sourceNode)}
-                        />
-                      </g>
-                    );
-                  }
-                  const from = getHandlePosition(sourceNode, edge.sourceHandle);
-                  const to = getHandlePosition(targetNode, edge.targetHandle);
-                  return (
-                    <g key={edge.id}>
-                      <path
-                        className={getEdgeClasses(edge, selectedNodeId)}
-                        d={computeEdgePath(from, to)}
-                      />
-                      <path
-                        className={getEdgeClasses(edge, selectedNodeId)}
-                        d={computeArrowHead(to)}
-                      />
-                    </g>
-                  );
-                })}
-              </svg>
 
-              {/* Nodes */}
-              {nodes.map((node) => {
-                const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
-                const dimByFilter = !matchesClassFilter(node);
-                return (
-                  <NodeCard
-                    key={node.id}
-                    node={node}
-                    isSelected={node.id === selectedNodeId}
-                    isDimmed={dimByNeighbor || dimByFilter}
-                    edges={edges}
-                    onSelect={() => selectNode(node.id)}
-                    onMove={(pos) => moveNode(node.id, pos)}
-                    zoom={zoom}
-                  />
-                );
-              })}
+              {clusterView ? (
+                <>
+                  {/* === CLUSTER / PACKAGE VIEW === */}
+
+                  {/* Cluster-level edges */}
+                  <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 8000, height: 8000, overflow: 'visible' }}>
+                    {clusterEdges.map((ce, i) => {
+                      const sp = clusterPositions[ce.source];
+                      const tp = clusterPositions[ce.target];
+                      if (!sp || !tp) return null;
+                      const from = { x: sp.x + sp.width, y: sp.y + sp.height / 2 };
+                      const to = { x: tp.x, y: tp.y + tp.height / 2 };
+                      return (
+                        <g key={`ce-${i}`}>
+                          <path
+                            className="connection-line"
+                            d={computeEdgePath(from, to)}
+                            style={{ strokeWidth: Math.min(4, 1 + ce.weight * 0.5), opacity: 0.5 }}
+                          />
+                          <path
+                            className="connection-line"
+                            d={computeArrowHead(to)}
+                            style={{ opacity: 0.5 }}
+                          />
+                          {ce.weight > 1 && (
+                            <text
+                              x={(from.x + to.x) / 2}
+                              y={(from.y + to.y) / 2 - 8}
+                              textAnchor="middle"
+                              className="fill-gray-400"
+                              style={{ fontSize: 10, fontFamily: 'inherit' }}
+                            >
+                              {ce.weight}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {/* Edges between nodes in expanded clusters */}
+                    {edges.map((edge) => {
+                      const srcCluster = nodeClusterMap[edge.source];
+                      const tgtCluster = nodeClusterMap[edge.target];
+                      // Only show node-level edges if both ends are in expanded clusters
+                      const srcExpanded = srcCluster && expandedClusters.has(srcCluster);
+                      const tgtExpanded = tgtCluster && expandedClusters.has(tgtCluster);
+                      if (!srcExpanded && !tgtExpanded) return null;
+
+                      const sourceNode = nodes.find((n) => n.id === edge.source);
+                      const targetNode = nodes.find((n) => n.id === edge.target);
+                      if (!sourceNode || !targetNode) return null;
+
+                      if (edge.source === edge.target) {
+                        return (
+                          <g key={edge.id}>
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopPath(sourceNode)} />
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopArrow(sourceNode)} />
+                          </g>
+                        );
+                      }
+                      const from = getHandlePosition(sourceNode, edge.sourceHandle);
+                      const to = getHandlePosition(targetNode, edge.targetHandle);
+                      return (
+                        <g key={edge.id}>
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeEdgePath(from, to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeArrowHead(to)} />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Cluster cards */}
+                  {clusters.map((cluster) => {
+                    const pos = clusterPositions[cluster.id];
+                    if (!pos) return null;
+                    const isExpanded = expandedClusters.has(cluster.id);
+                    return (
+                      <ClusterCard
+                        key={cluster.id}
+                        cluster={cluster}
+                        position={pos}
+                        isExpanded={isExpanded}
+                        onToggle={() => toggleCluster(cluster.id)}
+                      />
+                    );
+                  })}
+
+                  {/* Nodes inside expanded clusters */}
+                  {nodes.map((node) => {
+                    const clusterId = nodeClusterMap[node.id];
+                    if (!clusterId || !expandedClusters.has(clusterId)) return null;
+                    const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
+                    const dimByFilter = !matchesClassFilter(node);
+                    return (
+                      <NodeCard
+                        key={node.id}
+                        node={node}
+                        isSelected={node.id === selectedNodeId}
+                        isDimmed={dimByNeighbor || dimByFilter}
+                        edges={edges}
+                        onSelect={() => selectNode(node.id)}
+                        onMove={(pos) => moveNode(node.id, pos)}
+                        zoom={zoom}
+                      />
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  {/* === FLAT VIEW (original) === */}
+
+                  {/* SVG edges */}
+                  <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
+                    {edges.map((edge) => {
+                      const sourceNode = nodes.find((n) => n.id === edge.source);
+                      const targetNode = nodes.find((n) => n.id === edge.target);
+                      if (!sourceNode || !targetNode) return null;
+                      if (edge.source === edge.target) {
+                        return (
+                          <g key={edge.id}>
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopPath(sourceNode)} />
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopArrow(sourceNode)} />
+                          </g>
+                        );
+                      }
+                      const from = getHandlePosition(sourceNode, edge.sourceHandle);
+                      const to = getHandlePosition(targetNode, edge.targetHandle);
+                      return (
+                        <g key={edge.id}>
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeEdgePath(from, to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeArrowHead(to)} />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Nodes */}
+                  {nodes.map((node) => {
+                    const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
+                    const dimByFilter = !matchesClassFilter(node);
+                    return (
+                      <NodeCard
+                        key={node.id}
+                        node={node}
+                        isSelected={node.id === selectedNodeId}
+                        isDimmed={dimByNeighbor || dimByFilter}
+                        edges={edges}
+                        onSelect={() => selectNode(node.id)}
+                        onMove={(pos) => moveNode(node.id, pos)}
+                        zoom={zoom}
+                      />
+                    );
+                  })}
+                </>
+              )}
             </div>
 
             {/* Minimap — stays fixed in viewport */}
@@ -1121,6 +1233,117 @@ function FunctionRow({ node, active, onSelect }) {
         {node.inDegree ?? 0}·{node.outDegree ?? 0}
       </span>
     </button>
+  );
+}
+
+// --- Cluster / Package Card ---
+
+const CLUSTER_COLORS = [
+  { bg: 'bg-indigo-50', border: 'border-indigo-200', accent: 'text-indigo-600', headerBg: 'bg-indigo-100', ring: 'ring-indigo-300' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', accent: 'text-emerald-600', headerBg: 'bg-emerald-100', ring: 'ring-emerald-300' },
+  { bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-600', headerBg: 'bg-amber-100', ring: 'ring-amber-300' },
+  { bg: 'bg-rose-50', border: 'border-rose-200', accent: 'text-rose-600', headerBg: 'bg-rose-100', ring: 'ring-rose-300' },
+  { bg: 'bg-cyan-50', border: 'border-cyan-200', accent: 'text-cyan-600', headerBg: 'bg-cyan-100', ring: 'ring-cyan-300' },
+  { bg: 'bg-violet-50', border: 'border-violet-200', accent: 'text-violet-600', headerBg: 'bg-violet-100', ring: 'ring-violet-300' },
+  { bg: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-600', headerBg: 'bg-orange-100', ring: 'ring-orange-300' },
+  { bg: 'bg-teal-50', border: 'border-teal-200', accent: 'text-teal-600', headerBg: 'bg-teal-100', ring: 'ring-teal-300' },
+];
+
+function clusterColorIndex(clusterId) {
+  let hash = 0;
+  for (let i = 0; i < clusterId.length; i++) hash = ((hash << 5) - hash + clusterId.charCodeAt(i)) | 0;
+  return Math.abs(hash) % CLUSTER_COLORS.length;
+}
+
+function ClusterCard({ cluster, position, isExpanded, onToggle }) {
+  const colors = CLUSTER_COLORS[clusterColorIndex(cluster.id)];
+  const testCount = cluster.category_breakdown?.test || 0;
+  const sourceCount = cluster.category_breakdown?.source || 0;
+
+  return (
+    <div
+      className="absolute z-[5]"
+      style={{
+        top: position.y,
+        left: position.x,
+        width: position.width,
+        height: position.height,
+      }}
+    >
+      <div
+        className={`
+          h-full rounded-xl border-2 ${colors.border} ${colors.bg}
+          ${isExpanded ? 'ring-2 ' + colors.ring : ''}
+          transition-all duration-300 overflow-hidden
+          ${isExpanded ? '' : 'cursor-pointer hover:shadow-lg hover:scale-[1.02]'}
+        `}
+        style={{ transition: 'box-shadow 0.2s, transform 0.2s' }}
+      >
+        {/* Header bar */}
+        <div
+          className={`${colors.headerBg} px-4 py-3 flex items-center gap-2.5 cursor-pointer select-none`}
+          onClick={onToggle}
+        >
+          <span className={`material-symbols-outlined text-[20px] ${colors.accent}`}>
+            {isExpanded ? 'folder_open' : 'folder'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className={`font-semibold text-[14px] ${colors.accent} truncate`}>
+              {cluster.ai_label || cluster.label}
+            </div>
+            {cluster.directory && (
+              <div className="text-[10px] text-gray-400 truncate">
+                {cluster.directory}
+              </div>
+            )}
+          </div>
+          <span className={`material-symbols-outlined text-[18px] ${colors.accent} transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+            expand_more
+          </span>
+        </div>
+
+        {/* Collapsed body: stats */}
+        {!isExpanded && (
+          <div className="px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-gray-400">function</span>
+                <span className="text-[12px] text-gray-600 font-medium">{cluster.node_count}</span>
+                <span className="text-[10px] text-gray-400">functions</span>
+              </div>
+              {cluster.internal_edge_count > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px] text-gray-400">call_split</span>
+                  <span className="text-[12px] text-gray-600 font-medium">{cluster.internal_edge_count}</span>
+                  <span className="text-[10px] text-gray-400">calls</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {sourceCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-white/70 text-[10px] text-gray-500 border border-gray-200">
+                  {sourceCount} source
+                </span>
+              )}
+              {testCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-green-50 text-[10px] text-green-600 border border-green-200">
+                  {testCount} test
+                </span>
+              )}
+              {cluster.container && (
+                <span className={`px-2 py-0.5 rounded-full bg-white/70 text-[10px] ${colors.accent} border ${colors.border}`}>
+                  {cluster.container}
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[12px]">touch_app</span>
+              Click to expand
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 

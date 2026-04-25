@@ -2,7 +2,10 @@
   "permissions": {
     "allow": [
       "Bash(cat render.yaml)",
-      "Bash(cat .env.example)"
+      "Bash(cat .env.example)",
+      "Bash(grep -E \"\\\\.\\(py|ts|tsx|jsx\\)$\")",
+      "Bash(xargs wc:*)",
+      "Bash(npx vite:*)"
     ]
   }
 }
