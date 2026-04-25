@@ -1,0 +1,224 @@
+{
+  "version": "1.0",
+  "language": "swift",
+  "repo": "test1",
+  "files": [
+    {
+      "path": "math_utils.swift",
+      "imports": [
+        "Foundation",
+        "os.signpost"
+      ],
+      "functions": [
+        {
+          "qualified_name": "clamp",
+          "name": "clamp",
+          "line_start": 6,
+          "line_end": 10,
+          "signature": "func clamp(_ value: Int, min: Int, max: Int) -> Int",
+          "calls": [],
+          "container": null,
+          "params": [
+            {
+              "label": null,
+              "name": "value",
+              "type": "Int"
+            },
+            {
+              "label": "min",
+              "name": "min",
+              "type": "Int"
+            },
+            {
+              "label": "max",
+              "name": "max",
+              "type": "Int"
+            }
+          ],
+          "return_type": "Int"
+        },
+        {
+          "qualified_name": "normalize",
+          "name": "normalize",
+          "line_start": 12,
+          "line_end": 15,
+          "signature": "func normalize(values: [Double]) -> [Double]",
+          "calls": [
+            {
+              "target": "values.max",
+              "line": 13,
+              "receiver": "values",
+              "method": "max",
+              "kind": "method"
+            },
+            {
+              "target": "values.map",
+              "line": 14,
+              "receiver": "values",
+              "method": "map",
+              "kind": "method"
+            }
+          ],
+          "container": null,
+          "params": [
+            {
+              "label": "values",
+              "name": "values",
+              "type": "[Double]"
+            }
+          ],
+          "return_type": "[Double]"
+        },
+        {
+          "qualified_name": "summarize",
+          "name": "summarize",
+          "line_start": 17,
+          "line_end": 21,
+          "signature": "func summarize(label: String, values: [Double]) -> String",
+          "calls": [
+            {
+              "target": "normalize",
+              "line": 18,
+              "receiver": null,
+              "method": "normalize",
+              "kind": "call"
+            },
+            {
+              "target": "normed.map",
+              "line": 19,
+              "receiver": "normed",
+              "method": "map",
+              "kind": "method"
+            },
+            {
+              "target": "clamp",
+              "line": 19,
+              "receiver": null,
+              "method": "clamp",
+              "kind": "call"
+            },
+            {
+              "target": "Int",
+              "line": 19,
+              "receiver": null,
+              "method": "Int",
+              "kind": "call"
+            }
+          ],
+          "container": null,
+          "params": [
+            {
+              "label": "label",
+              "name": "label",
+              "type": "String"
+            },
+            {
+              "label": "values",
+              "name": "values",
+              "type": "[Double]"
+            }
+          ],
+          "return_type": "String"
+        },
+        {
+          "qualified_name": "loadAndSummarize",
+          "name": "loadAndSummarize",
+          "line_start": 23,
+          "line_end": 30,
+          "signature": "func loadAndSummarize(path: String, label: String) throws -> String",
+          "calls": [
+            {
+              "target": "NSError",
+              "line": 25,
+              "receiver": null,
+              "method": "NSError",
+              "kind": "call"
+            },
+            {
+              "target": "String",
+              "line": 27,
+              "receiver": null,
+              "method": "String",
+              "kind": "call"
+            },
+            {
+              "target": "raw.split.compactMap",
+              "line": 28,
+              "receiver": "raw.split",
+              "method": "compactMap",
+              "kind": "method"
+            },
+            {
+              "target": "raw.split",
+              "line": 28,
+              "receiver": "raw",
+              "method": "split",
+              "kind": "method"
+            },
+            {
+              "target": "Double",
+              "line": 28,
+              "receiver": null,
+              "method": "Double",
+              "kind": "call"
+            },
+            {
+              "target": "summarize",
+              "line": 29,
+              "receiver": null,
+              "method": "summarize",
+              "kind": "call"
+            }
+          ],
+          "container": null,
+          "params": [
+            {
+              "label": "path",
+              "name": "path",
+              "type": "String"
+            },
+            {
+              "label": "label",
+              "name": "label",
+              "type": "String"
+            }
+          ],
+          "return_type": "String"
+        },
+        {
+          "qualified_name": "batchSummarize",
+          "name": "batchSummarize",
+          "line_start": 32,
+          "line_end": 36,
+          "signature": "func batchSummarize(_ entries: [(path: String, label: String)]) -> [String]",
+          "calls": [
+            {
+              "target": "entries.compactMap",
+              "line": 33,
+              "receiver": "entries",
+              "method": "compactMap",
+              "kind": "method"
+            },
+            {
+              "target": "loadAndSummarize",
+              "line": 34,
+              "receiver": null,
+              "method": "loadAndSummarize",
+              "kind": "call"
+            }
+          ],
+          "container": null,
+          "params": [
+            {
+              "label": null,
+              "name": "entries",
+              "type": "[(path: String, label: String)]"
+            }
+          ],
+          "return_type": "[String]"
+        }
+      ],
+      "types": []
+    }
+  ]
+}

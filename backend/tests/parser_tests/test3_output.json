@@ -1,0 +1,525 @@
+{
+  "version": "1.0",
+  "language": "swift",
+  "repo": "test3",
+  "files": [
+    {
+      "path": "todo_service.swift",
+      "imports": [
+        "Foundation"
+      ],
+      "functions": [
+        {
+          "qualified_name": "TodoService.add",
+          "name": "add",
+          "line_start": 8,
+          "line_end": 10,
+          "signature": "func add(_ todo: Todo)",
+          "calls": [
+            {
+              "target": "store",
+              "line": 9,
+              "receiver": null,
+              "method": "store",
+              "kind": "call"
+            }
+          ],
+          "container": "TodoService",
+          "params": [
+            {
+              "label": null,
+              "name": "todo",
+              "type": "Todo"
+            }
+          ],
+          "return_type": null
+        },
+        {
+          "qualified_name": "TodoService.all",
+          "name": "all",
+          "line_start": 12,
+          "line_end": 14,
+          "signature": "func all() -> [Todo]",
+          "calls": [
+            {
+              "target": "store.values.sorted",
+              "line": 13,
+              "receiver": "store.values",
+              "method": "sorted",
+              "kind": "method"
+            }
+          ],
+          "container": "TodoService",
+          "params": [],
+          "return_type": "[Todo]"
+        },
+        {
+          "qualified_name": "TodoService.complete",
+          "name": "complete",
+          "line_start": 16,
+          "line_end": 21,
+          "signature": "func complete(id: UUID) -> Todo?",
+          "calls": [
+            {
+              "target": "store",
+              "line": 17,
+              "receiver": null,
+              "method": "store",
+              "kind": "call"
+            },
+            {
+              "target": "store",
+              "line": 19,
+              "receiver": null,
+              "method": "store",
+              "kind": "call"
+            }
+          ],
+          "container": "TodoService",
+          "params": [
+            {
+              "label": "id",
+              "name": "id",
+              "type": "UUID"
+            }
+          ],
+          "return_type": "Todo?"
+        },
+        {
+          "qualified_name": "TodoService.highPriority",
+          "name": "highPriority",
+          "line_start": 23,
+          "line_end": 25,
+          "signature": "func highPriority() -> [Todo]",
+          "calls": [
+            {
+              "target": "all.filter",
+              "line": 24,
+              "receiver": "all",
+              "method": "filter",
+              "kind": "method"
+            },
+            {
+              "target": "all",
+              "line": 24,
+              "receiver": null,
+              "method": "all",
+              "kind": "call"
+            }
+          ],
+          "container": "TodoService",
+          "params": [],
+          "return_type": "[Todo]"
+        },
+        {
+          "qualified_name": "TodoService.bulkAdd",
+          "name": "bulkAdd",
+          "line_start": 27,
+          "line_end": 29,
+          "signature": "func bulkAdd(_ todos: [Todo])",
+          "calls": [
+            {
+              "target": "todos.forEach",
+              "line": 28,
+              "receiver": "todos",
+              "method": "forEach",
+              "kind": "method"
+            },
+            {
+              "target": "self.add",
+              "line": 28,
+              "receiver": "self",
+              "method": "add",
+              "kind": "method"
+            }
+          ],
+          "container": "TodoService",
+          "params": [
+            {
+              "label": null,
+              "name": "todos",
+              "type": "[Todo]"
+            }
+          ],
+          "return_type": null
+        }
+      ],
+      "types": [
+        {
+          "name": "TodoService",
+          "kind": "class",
+          "line_start": 5,
+          "line_end": 30,
+          "inherits": []
+        }
+      ]
+    },
+    {
+      "path": "todo_controller.swift",
+      "imports": [
+        "Foundation"
+      ],
+      "functions": [
+        {
+          "qualified_name": "TodoController.init",
+          "name": "init",
+          "line_start": 8,
+          "line_end": 10,
+          "signature": "init(service: TodoService)",
+          "calls": [],
+          "container": "TodoController",
+          "params": [
+            {
+              "label": "service",
+              "name": "service",
+              "type": "TodoService"
+            }
+          ],
+          "return_type": "TodoController"
+        },
+        {
+          "qualified_name": "TodoController.seedDefaults",
+          "name": "seedDefaults",
+          "line_start": 12,
+          "line_end": 19,
+          "signature": "func seedDefaults()",
+          "calls": [
+            {
+              "target": "Todo",
+              "line": 14,
+              "receiver": null,
+              "method": "Todo",
+              "kind": "initializer"
+            },
+            {
+              "target": "Todo",
+              "line": 15,
+              "receiver": null,
+              "method": "Todo",
+              "kind": "initializer"
+            },
+            {
+              "target": "Todo",
+              "line": 16,
+              "receiver": null,
+              "method": "Todo",
+              "kind": "initializer"
+            },
+            {
+              "target": "service.bulkAdd",
+              "line": 18,
+              "receiver": "service",
+              "method": "bulkAdd",
+              "kind": "method"
+            }
+          ],
+          "container": "TodoController",
+          "params": [],
+          "return_type": null
+        },
+        {
+          "qualified_name": "TodoController.promoteAll",
+          "name": "promoteAll",
+          "line_start": 21,
+          "line_end": 24,
+          "signature": "func promoteAll()",
+          "calls": [
+            {
+              "target": "service.all.map",
+              "line": 22,
+              "receiver": "service.all",
+              "method": "map",
+              "kind": "method"
+            },
+            {
+              "target": "service.all",
+              "line": 22,
+              "receiver": "service",
+              "method": "all",
+              "kind": "method"
+            },
+            {
+              "target": "$0.withPriority",
+              "line": 22,
+              "receiver": "$0",
+              "method": "withPriority",
+              "kind": "method"
+            },
+            {
+              "target": "service.bulkAdd",
+              "line": 23,
+              "receiver": "service",
+              "method": "bulkAdd",
+              "kind": "method"
+            }
+          ],
+          "container": "TodoController",
+          "params": [],
+          "return_type": null
+        },
+        {
+          "qualified_name": "TodoController.completeHighPriority",
+          "name": "completeHighPriority",
+          "line_start": 26,
+          "line_end": 29,
+          "signature": "func completeHighPriority() -> [Todo]",
+          "calls": [
+            {
+              "target": "service.highPriority",
+              "line": 27,
+              "receiver": "service",
+              "method": "highPriority",
+              "kind": "method"
+            },
+            {
+              "target": "targets.compactMap",
+              "line": 28,
+              "receiver": "targets",
+              "method": "compactMap",
+              "kind": "method"
+            },
+            {
+              "target": "service.complete",
+              "line": 28,
+              "receiver": "service",
+              "method": "complete",
+              "kind": "method"
+            }
+          ],
+          "container": "TodoController",
+          "params": [],
+          "return_type": "[Todo]"
+        },
+        {
+          "qualified_name": "TodoController.report",
+          "name": "report",
+          "line_start": 31,
+          "line_end": 35,
+          "signature": "func report() -> String",
+          "calls": [
+            {
+              "target": "service.all",
+              "line": 32,
+              "receiver": "service",
+              "method": "all",
+              "kind": "method"
+            },
+            {
+              "target": "all.filter",
+              "line": 33,
+              "receiver": "all",
+              "method": "filter",
+              "kind": "method"
+            }
+          ],
+          "container": "TodoController",
+          "params": [],
+          "return_type": "String"
+        }
+      ],
+      "types": [
+        {
+          "name": "TodoController",
+          "kind": "class",
+          "line_start": 5,
+          "line_end": 36,
+          "inherits": []
+        }
+      ]
+    },
+    {
+      "path": "main.swift",
+      "imports": [
+        "Foundation"
+      ],
+      "functions": [
+        {
+          "qualified_name": "bootstrap",
+          "name": "bootstrap",
+          "line_start": 5,
+          "line_end": 10,
+          "signature": "func bootstrap() -> TodoController",
+          "calls": [
+            {
+              "target": "TodoService",
+              "line": 6,
+              "receiver": null,
+              "method": "TodoService",
+              "kind": "initializer"
+            },
+            {
+              "target": "TodoController",
+              "line": 7,
+              "receiver": null,
+              "method": "TodoController",
+              "kind": "initializer"
+            },
+            {
+              "target": "controller.seedDefaults",
+              "line": 8,
+              "receiver": "controller",
+              "method": "seedDefaults",
+              "kind": "method"
+            }
+          ],
+          "container": null,
+          "params": [],
+          "return_type": "TodoController"
+        },
+        {
+          "qualified_name": "run",
+          "name": "run",
+          "line_start": 12,
+          "line_end": 18,
+          "signature": "func run()",
+          "calls": [
+            {
+              "target": "bootstrap",
+              "line": 13,
+              "receiver": null,
+              "method": "bootstrap",
+              "kind": "call"
+            },
+            {
+              "target": "controller.promoteAll",
+              "line": 14,
+              "receiver": "controller",
+              "method": "promoteAll",
+              "kind": "method"
+            },
+            {
+              "target": "controller.completeHighPriority",
+              "line": 15,
+              "receiver": "controller",
+              "method": "completeHighPriority",
+              "kind": "method"
+            },
+            {
+              "target": "controller.report",
+              "line": 16,
+              "receiver": "controller",
+              "method": "report",
+              "kind": "method"
+            },
+            {
+              "target": "logResults",
+              "line": 17,
+              "receiver": null,
+              "method": "logResults",
+              "kind": "call"
+            }
+          ],
+          "container": null,
+          "params": [],
+          "return_type": null
+        },
+        {
+          "qualified_name": "logResults",
+          "name": "logResults",
+          "line_start": 20,
+          "line_end": 24,
+          "signature": "func logResults(_ todos: [Todo])",
+          "calls": [
+            {
+              "target": "todos.forEach",
+              "line": 21,
+              "receiver": "todos",
+              "method": "forEach",
+              "kind": "method"
+            },
+            {
+              "target": "todo.withPriority",
+              "line": 22,
+              "receiver": "todo",
+              "method": "withPriority",
+              "kind": "method"
+            }
+          ],
+          "container": null,
+          "params": [
+            {
+              "label": null,
+              "name": "todos",
+              "type": "[Todo]"
+            }
+          ],
+          "return_type": null
+        }
+      ],
+      "types": []
+    },
+    {
+      "path": "todo_model.swift",
+      "imports": [
+        "Foundation"
+      ],
+      "functions": [
+        {
+          "qualified_name": "Todo.init",
+          "name": "init",
+          "line_start": 15,
+          "line_end": 20,
+          "signature": "init(title: String, priority: Priority = .medium)",
+          "calls": [
+            {
+              "target": "UUID",
+              "line": 16,
+              "receiver": null,
+              "method": "UUID",
+              "kind": "call"
+            }
+          ],
+          "container": "Todo",
+          "params": [
+            {
+              "label": "title",
+              "name": "title",
+              "type": "String"
+            },
+            {
+              "label": "priority",
+              "name": "priority",
+              "type": "Priority"
+            }
+          ],
+          "return_type": "Todo"
+        },
+        {
+          "qualified_name": "Todo.withPriority",
+          "name": "withPriority",
+          "line_start": 22,
+          "line_end": 26,
+          "signature": "func withPriority(_ priority: Priority) -> Todo",
+          "calls": [],
+          "container": "Todo",
+          "params": [
+            {
+              "label": null,
+              "name": "priority",
+              "type": "Priority"
+            }
+          ],
+          "return_type": "Todo"
+        }
+      ],
+      "types": [
+        {
+          "name": "Priority",
+          "kind": "enum",
+          "line_start": 5,
+          "line_end": 7,
+          "inherits": [
+            "String"
+          ]
+        },
+        {
+          "name": "Todo",
+          "kind": "struct",
+          "line_start": 9,
+          "line_end": 27,
+          "inherits": []
+        }
+      ]
+    }
+  ]
+}

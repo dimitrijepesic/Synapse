@@ -1,0 +1,315 @@
+{
+  "version": "1.0",
+  "language": "swift",
+  "repo": "test2",
+  "files": [
+    {
+      "path": "store.swift",
+      "imports": [
+        "Foundation"
+      ],
+      "functions": [
+        {
+          "qualified_name": "AppState.init",
+          "name": "init",
+          "line_start": 20,
+          "line_end": 23,
+          "signature": "init(counter: Int = 0, messages: [String] = [])",
+          "calls": [],
+          "container": "AppState",
+          "params": [
+            {
+              "label": "counter",
+              "name": "counter",
+              "type": "Int"
+            },
+            {
+              "label": "messages",
+              "name": "messages",
+              "type": "[String]"
+            }
+          ],
+          "return_type": "AppState"
+        },
+        {
+          "qualified_name": "BaseStore.init",
+          "name": "init",
+          "line_start": 32,
+          "line_end": 35,
+          "signature": "init(initial: AppState, middlewares: [String] = [])",
+          "calls": [],
+          "container": "BaseStore",
+          "params": [
+            {
+              "label": "initial",
+              "name": "initial",
+              "type": "AppState"
+            },
+            {
+              "label": "middlewares",
+              "name": "middlewares",
+              "type": "[String]"
+            }
+          ],
+          "return_type": "BaseStore"
+        },
+        {
+          "qualified_name": "BaseStore.currentState",
+          "name": "currentState",
+          "line_start": 37,
+          "line_end": 39,
+          "signature": "func currentState() -> AppState",
+          "calls": [],
+          "container": "BaseStore",
+          "params": [],
+          "return_type": "AppState"
+        },
+        {
+          "qualified_name": "BaseStore.dispatch",
+          "name": "dispatch",
+          "line_start": 41,
+          "line_end": 44,
+          "signature": "func dispatch(_ action: Dispatchable)",
+          "calls": [
+            {
+              "target": "action.validate",
+              "line": 42,
+              "receiver": "action",
+              "method": "validate",
+              "kind": "method"
+            },
+            {
+              "target": "applyMiddlewares",
+              "line": 43,
+              "receiver": null,
+              "method": "applyMiddlewares",
+              "kind": "call"
+            }
+          ],
+          "container": "BaseStore",
+          "params": [
+            {
+              "label": null,
+              "name": "action",
+              "type": "Dispatchable"
+            }
+          ],
+          "return_type": null
+        },
+        {
+          "qualified_name": "BaseStore.applyMiddlewares",
+          "name": "applyMiddlewares",
+          "line_start": 46,
+          "line_end": 50,
+          "signature": "func applyMiddlewares(for action: Dispatchable)",
+          "calls": [
+            {
+              "target": "middlewares.forEach",
+              "line": 47,
+              "receiver": "middlewares",
+              "method": "forEach",
+              "kind": "method"
+            }
+          ],
+          "container": "BaseStore",
+          "params": [
+            {
+              "label": "for",
+              "name": "action",
+              "type": "Dispatchable"
+            }
+          ],
+          "return_type": null
+        },
+        {
+          "qualified_name": "LoggingStore.dispatch",
+          "name": "dispatch",
+          "line_start": 56,
+          "line_end": 60,
+          "signature": "override func dispatch(_ action: Dispatchable)",
+          "calls": [
+            {
+              "target": "log.append",
+              "line": 57,
+              "receiver": "log",
+              "method": "append",
+              "kind": "method"
+            },
+            {
+              "target": "super.dispatch",
+              "line": 58,
+              "receiver": "super",
+              "method": "dispatch",
+              "kind": "method"
+            },
+            {
+              "target": "self.recordCompletion",
+              "line": 59,
+              "receiver": "self",
+              "method": "recordCompletion",
+              "kind": "method"
+            }
+          ],
+          "container": "LoggingStore",
+          "params": [
+            {
+              "label": null,
+              "name": "action",
+              "type": "Dispatchable"
+            }
+          ],
+          "return_type": null
+        },
+        {
+          "qualified_name": "LoggingStore.recordCompletion",
+          "name": "recordCompletion",
+          "line_start": 62,
+          "line_end": 65,
+          "signature": "func recordCompletion(action: Dispatchable)",
+          "calls": [
+            {
+              "target": "self.currentState",
+              "line": 63,
+              "receiver": "self",
+              "method": "currentState",
+              "kind": "method"
+            },
+            {
+              "target": "log.append",
+              "line": 64,
+              "receiver": "log",
+              "method": "append",
+              "kind": "method"
+            }
+          ],
+          "container": "LoggingStore",
+          "params": [
+            {
+              "label": "action",
+              "name": "action",
+              "type": "Dispatchable"
+            }
+          ],
+          "return_type": null
+        },
+        {
+          "qualified_name": "LoggingStore.replayLog",
+          "name": "replayLog",
+          "line_start": 67,
+          "line_end": 69,
+          "signature": "func replayLog() -> [String]",
+          "calls": [],
+          "container": "LoggingStore",
+          "params": [],
+          "return_type": "[String]"
+        },
+        {
+          "qualified_name": "LoggingStore.exportLog",
+          "name": "exportLog",
+          "line_start": 73,
+          "line_end": 75,
+          "signature": "func exportLog(separator: String = \"\\n\") -> String",
+          "calls": [
+            {
+              "target": "replayLog.joined",
+              "line": 74,
+              "receiver": "replayLog",
+              "method": "joined",
+              "kind": "method"
+            },
+            {
+              "target": "replayLog",
+              "line": 74,
+              "receiver": null,
+              "method": "replayLog",
+              "kind": "call"
+            }
+          ],
+          "container": "LoggingStore",
+          "params": [
+            {
+              "label": "separator",
+              "name": "separator",
+              "type": "String"
+            }
+          ],
+          "return_type": "String"
+        },
+        {
+          "qualified_name": "LoggingStore.clearAndExport",
+          "name": "clearAndExport",
+          "line_start": 77,
+          "line_end": 81,
+          "signature": "func clearAndExport() -> String",
+          "calls": [
+            {
+              "target": "self.exportLog",
+              "line": 78,
+              "receiver": "self",
+              "method": "exportLog",
+              "kind": "method"
+            },
+            {
+              "target": "log.removeAll",
+              "line": 79,
+              "receiver": "log",
+              "method": "removeAll",
+              "kind": "method"
+            }
+          ],
+          "container": "LoggingStore",
+          "params": [],
+          "return_type": "String"
+        }
+      ],
+      "types": [
+        {
+          "name": "Dispatchable",
+          "kind": "protocol",
+          "line_start": 5,
+          "line_end": 8,
+          "inherits": []
+        },
+        {
+          "name": "StoreProtocol",
+          "kind": "protocol",
+          "line_start": 10,
+          "line_end": 14,
+          "inherits": []
+        },
+        {
+          "name": "AppState",
+          "kind": "struct",
+          "line_start": 16,
+          "line_end": 24,
+          "inherits": []
+        },
+        {
+          "name": "BaseStore",
+          "kind": "class",
+          "line_start": 26,
+          "line_end": 51,
+          "inherits": [
+            "StoreProtocol"
+          ]
+        },
+        {
+          "name": "LoggingStore",
+          "kind": "class",
+          "line_start": 53,
+          "line_end": 70,
+          "inherits": [
+            "BaseStore"
+          ]
+        },
+        {
+          "name": "LoggingStore",
+          "kind": "extension",
+          "line_start": 72,
+          "line_end": 82,
+          "inherits": []
+        }
+      ]
+    }
+  ]
+}
