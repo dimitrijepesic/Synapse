@@ -5,6 +5,7 @@ import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
 import { defaultFileTree, SOURCE_FILES } from '../data/mockData';
 import { API_BASE, ENDPOINTS } from '../types/api';
+import { FilterPanel } from '../components/FilterPanel';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
@@ -146,7 +147,7 @@ function computeSelfLoopArrow(node) {
 // --- Main Workspace ---
 
 export default function Workspace() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, filters, filteredCounts } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -160,6 +161,10 @@ export default function Workspace() {
   }, [searchParams]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
+
+  // Filter panel state
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const activeFilterCount = Object.keys(filters).length;
 
   // Codebase overview state
   const [overview, setOverview] = useState(null);
@@ -515,6 +520,30 @@ export default function Workspace() {
                 </button>
               )}
             </div>
+            <button
+              onClick={() => setFilterPanelOpen((v) => !v)}
+              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
+                filterPanelOpen || activeFilterCount > 0
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
+                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
+              }`}
+              title="Filter graph nodes"
+            >
+              <span className="material-symbols-outlined text-[16px]">filter_list</span>
+              <span className="font-label-sm">Filter</span>
+              {activeFilterCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                  filterPanelOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            {filteredCounts && (
+              <span className="text-[11px] text-gray-500 font-label-sm self-center">
+                {filteredCounts.filtered_nodes}/{filteredCounts.total_nodes} nodes
+              </span>
+            )}
           </div>
 
           {/* Canvas */}
@@ -716,6 +745,9 @@ export default function Workspace() {
             open={ui.codePanelOpen && !!selectedNode}
             onClose={toggleCodePanel}
           />
+
+          {/* Filter Panel */}
+          <FilterPanel open={filterPanelOpen} onClose={() => setFilterPanelOpen(false)} />
 
           {/* Reopen button — top-right, visible when a node is selected but panel is closed */}
           {selectedNode && !ui.codePanelOpen && (

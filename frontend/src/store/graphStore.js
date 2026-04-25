@@ -193,6 +193,15 @@ const useGraphStore = create((set, get) => ({
   // view is turned off.
   flatPositions: {},
 
+  // Filter state
+  filters: {},
+  filterOptions: null,
+  filterLoading: false,
+  filteredCounts: null,  // { total_nodes, total_edges, filtered_nodes, filtered_edges }
+  // Stash the full unfiltered graph so we can restore when filters are cleared
+  _unfilteredNodes: null,
+  _unfilteredEdges: null,
+
   loadGraph: async (graphId) => {
     set({ loading: true, error: null });
     try {
@@ -655,6 +664,96 @@ const useGraphStore = create((set, get) => ({
       }
     };
     layoutRaf = requestAnimationFrame(tick);
+  },
+
+  // --- Filter actions ---
+
+  loadFilterOptions: async () => {
+    const { graphId } = get();
+    if (!graphId) return;
+    try {
+      const res = await fetch(`${API_BASE}/graph/${graphId}/filter-options`);
+      if (!res.ok) return;
+      const data = await res.json();
+      set({ filterOptions: data });
+    } catch (e) {
+      console.warn('Failed to load filter options:', e);
+    }
+  },
+
+  setFilter: (key, value) => set((state) => {
+    const next = { ...state.filters };
+    if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    return { filters: next };
+  }),
+
+  clearFilters: () => {
+    const { _unfilteredNodes, _unfilteredEdges } = get();
+    const updates = { filters: {}, filteredCounts: null };
+    if (_unfilteredNodes) {
+      updates.nodes = _unfilteredNodes;
+      updates.edges = _unfilteredEdges;
+      updates._unfilteredNodes = null;
+      updates._unfilteredEdges = null;
+    }
+    set(updates);
+  },
+
+  applyFilters: async () => {
+    const { graphId, filters, nodes, edges, _unfilteredNodes } = get();
+    if (!graphId) return;
+
+    // Stash the full graph on first filter application
+    if (!_unfilteredNodes) {
+      set({ _unfilteredNodes: nodes, _unfilteredEdges: edges });
+    }
+
+    // If no active filters, restore the full graph
+    if (Object.keys(filters).length === 0) {
+      get().clearFilters();
+      return;
+    }
+
+    set({ filterLoading: true });
+    try {
+      const res = await fetch(`${API_BASE}/graph/${graphId}/filter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters),
+      });
+      if (!res.ok) throw new Error(`Filter failed: ${res.status}`);
+      const data = await res.json();
+
+      // The backend returns raw nodes/edges — transform them the same way loadGraph does
+      const fullNodes = get()._unfilteredNodes || nodes;
+      const filteredIds = new Set(data.nodes.map((n) => n.id));
+      const filteredNodes = fullNodes.filter((n) => filteredIds.has(n.id));
+      const filteredEdges = (get()._unfilteredEdges || edges).filter(
+        (e) => filteredIds.has(e.source) && filteredIds.has(e.target)
+      );
+
+      set({
+        nodes: filteredNodes,
+        edges: filteredEdges,
+        filterLoading: false,
+        filteredCounts: {
+          total_nodes: data.total_nodes,
+          total_edges: data.total_edges,
+          filtered_nodes: data.filtered_nodes,
+          filtered_edges: data.filtered_edges,
+        },
+      });
+
+      // Re-layout after filter
+      get().autoLayout({ animate: true });
+    } catch (e) {
+      set({ filterLoading: false });
+      console.warn('Filter error:', e);
+    }
   },
 }));
 
