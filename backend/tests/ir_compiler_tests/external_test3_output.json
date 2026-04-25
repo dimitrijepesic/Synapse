@@ -1,5 +1,39 @@
 {
   "graph_id": "test3",
+  "metadata": {
+    "node_count": 16,
+    "edge_count": 19,
+    "function_kinds": {
+      "constructor": {
+        "label": "Constructors",
+        "count": 3
+      },
+      "method": {
+        "label": "Methods",
+        "count": 13
+      }
+    },
+    "category_counts": {
+      "source": 16
+    },
+    "entry_points": [],
+    "connected_components": {
+      "count": 1,
+      "largest_size": 16,
+      "isolated_nodes": 0
+    },
+    "cycles": {
+      "count": 0,
+      "largest_size": 0,
+      "members": []
+    },
+    "test_coverage": {
+      "source_nodes": 16,
+      "covered_by_tests": 0,
+      "coverage_ratio": 0.0
+    },
+    "protocol_summary": {}
+  },
   "nodes": [
     {
       "id": "func:todo_service.swift:TodoService.add:8",
@@ -21,7 +55,17 @@
       "container": "TodoService",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 0,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_service.swift:TodoService.all:12",
@@ -37,7 +81,17 @@
       "container": "TodoService",
       "in_degree": 3,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 1,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_service.swift:TodoService.complete:16",
@@ -59,7 +113,17 @@
       "container": "TodoService",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 0,
+        "line_span": 6
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_service.swift:TodoService.highPriority:23",
@@ -75,7 +139,17 @@
       "container": "TodoService",
       "in_degree": 1,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 2,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_service.swift:TodoService.bulkAdd:27",
@@ -97,7 +171,17 @@
       "container": "TodoService",
       "in_degree": 2,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 2,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_controller.swift:TodoController.init:8",
@@ -119,7 +203,17 @@
       "container": "TodoController",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "constructor",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 0,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_controller.swift:TodoController.seedDefaults:12",
@@ -135,7 +229,17 @@
       "container": "TodoController",
       "in_degree": 1,
       "out_degree": 2,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 4,
+        "line_span": 8
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_controller.swift:TodoController.promoteAll:21",
@@ -151,7 +255,17 @@
       "container": "TodoController",
       "in_degree": 1,
       "out_degree": 3,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 4,
+        "line_span": 4
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_controller.swift:TodoController.completeHighPriority:26",
@@ -167,7 +281,17 @@
       "container": "TodoController",
       "in_degree": 1,
       "out_degree": 2,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 3,
+        "line_span": 4
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_controller.swift:TodoController.report:31",
@@ -183,7 +307,17 @@
       "container": "TodoController",
       "in_degree": 1,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 2,
+        "line_span": 5
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:main.swift:bootstrap:5",
@@ -198,8 +332,18 @@
       "return_type": "TodoController",
       "container": null,
       "in_degree": 1,
-      "out_degree": 2,
-      "category": "source"
+      "out_degree": 3,
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 3,
+        "line_span": 6
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:main.swift:run:12",
@@ -215,7 +359,17 @@
       "container": null,
       "in_degree": 0,
       "out_degree": 5,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 5,
+        "line_span": 7
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:main.swift:logResults:20",
@@ -237,7 +391,17 @@
       "container": null,
       "in_degree": 1,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 2,
+        "line_span": 5
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_model.swift:Todo.init:15",
@@ -264,7 +428,17 @@
       "container": "Todo",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "constructor",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 2,
+        "call_count": 1,
+        "line_span": 6
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:todo_model.swift:Todo.withPriority:22",
@@ -286,7 +460,44 @@
       "container": "Todo",
       "in_degree": 2,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 0,
+        "line_span": 5
+      },
+      "reachable_from_public_api": false
+    },
+    {
+      "id": "func:todo_service.swift:TodoService.__synthetic_init:0",
+      "type": "function",
+      "qualified_name": "TodoService.__synthetic_init",
+      "name": "init",
+      "file": "todo_service.swift",
+      "line": 5,
+      "line_end": 30,
+      "signature": "TodoService.init()",
+      "params": [],
+      "return_type": "TodoService",
+      "container": "TodoService",
+      "in_degree": 1,
+      "out_degree": 0,
+      "category": "source",
+      "function_kind": "constructor",
+      "synthetic": true,
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 0,
+        "line_span": null
+      },
+      "reachable_from_public_api": false
     }
   ],
   "edges": [
@@ -347,6 +558,12 @@
     {
       "source": "func:todo_controller.swift:TodoController.report:31",
       "target": "func:todo_service.swift:TodoService.all:12",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:main.swift:bootstrap:5",
+      "target": "func:todo_service.swift:TodoService.__synthetic_init:0",
       "type": "calls",
       "weight": 1
     },

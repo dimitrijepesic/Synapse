@@ -1,5 +1,44 @@
 {
   "graph_id": "test2",
+  "metadata": {
+    "node_count": 10,
+    "edge_count": 6,
+    "function_kinds": {
+      "constructor": {
+        "label": "Constructors",
+        "count": 2
+      },
+      "method": {
+        "label": "Methods",
+        "count": 8
+      }
+    },
+    "category_counts": {
+      "source": 10
+    },
+    "entry_points": [],
+    "connected_components": {
+      "count": 4,
+      "largest_size": 5,
+      "isolated_nodes": 2
+    },
+    "cycles": {
+      "count": 0,
+      "largest_size": 0,
+      "members": []
+    },
+    "test_coverage": {
+      "source_nodes": 10,
+      "covered_by_tests": 0,
+      "coverage_ratio": 0.0
+    },
+    "protocol_summary": {
+      "StoreProtocol": {
+        "conformer_count": 1,
+        "method_count": 0
+      }
+    }
+  },
   "nodes": [
     {
       "id": "func:store.swift:AppState.init:20",
@@ -26,7 +65,17 @@
       "container": "AppState",
       "in_degree": 0,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "constructor",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 2,
+        "call_count": 0,
+        "line_span": 4
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:BaseStore.init:32",
@@ -53,7 +102,17 @@
       "container": "BaseStore",
       "in_degree": 0,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "constructor",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 2,
+        "call_count": 0,
+        "line_span": 4
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:BaseStore.currentState:37",
@@ -69,7 +128,17 @@
       "container": "BaseStore",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 0,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:BaseStore.dispatch:41",
@@ -89,9 +158,19 @@
       ],
       "return_type": null,
       "container": "BaseStore",
-      "in_degree": 0,
+      "in_degree": 1,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 2,
+        "line_span": 4
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:BaseStore.applyMiddlewares:46",
@@ -113,7 +192,17 @@
       "container": "BaseStore",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 1,
+        "line_span": 5
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:LoggingStore.dispatch:56",
@@ -134,8 +223,18 @@
       "return_type": null,
       "container": "LoggingStore",
       "in_degree": 0,
-      "out_degree": 1,
-      "category": "source"
+      "out_degree": 2,
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": true,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 3,
+        "line_span": 5
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:LoggingStore.recordCompletion:62",
@@ -157,7 +256,17 @@
       "container": "LoggingStore",
       "in_degree": 1,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 2,
+        "line_span": 4
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:LoggingStore.replayLog:67",
@@ -173,7 +282,17 @@
       "container": "LoggingStore",
       "in_degree": 1,
       "out_degree": 0,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 0,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:LoggingStore.exportLog:73",
@@ -195,7 +314,17 @@
       "container": "LoggingStore",
       "in_degree": 1,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 1,
+        "call_count": 2,
+        "line_span": 3
+      },
+      "reachable_from_public_api": false
     },
     {
       "id": "func:store.swift:LoggingStore.clearAndExport:77",
@@ -211,13 +340,29 @@
       "container": "LoggingStore",
       "in_degree": 0,
       "out_degree": 1,
-      "category": "source"
+      "category": "source",
+      "function_kind": "method",
+      "access_level": "internal",
+      "is_override": false,
+      "protocol_witnesses": [],
+      "complexity": {
+        "param_count": 0,
+        "call_count": 2,
+        "line_span": 5
+      },
+      "reachable_from_public_api": false
     }
   ],
   "edges": [
     {
       "source": "func:store.swift:BaseStore.dispatch:41",
       "target": "func:store.swift:BaseStore.applyMiddlewares:46",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:store.swift:LoggingStore.dispatch:56",
+      "target": "func:store.swift:BaseStore.dispatch:41",
       "type": "calls",
       "weight": 1
     },

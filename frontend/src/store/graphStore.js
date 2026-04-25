@@ -5,12 +5,171 @@ import { defaultNodes, defaultEdges } from '../data/mockData';
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
 const LAYOUT_ANIM_MS = 500;
+const CLUSTER_ANIM_MS = 380;
 
 let layoutRaf = null;
+let clusterRaf = null;
 
 // easeInOutCubic
 const ease = (t) => (t < 0.5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2);
 import { API_BASE } from '../types/api';
+
+// ── Cluster-mode layout tween ────────────────────────────────────────────
+// Animates `nodes[].position` toward `nodeTargets` and `clusterPositions[id]`
+// toward `clusterTargets` over CLUSTER_ANIM_MS. `clusterTargets` may include
+// width/height — those interpolate too, so cluster cards smoothly resize on
+// expand/collapse.
+// Seed cluster card positions at the centroid of their member nodes' current
+// positions, sized as a single node card. Used when entering cluster mode so
+// each card visually "grows out of" the area where its members were sitting.
+// Compute the auto-layout target positions for a graph (dagre on connected
+// nodes, grid-pack on isolated). Pure: no store mutation. Returns
+// { [nodeId]: {x, y} }.
+function _computeAutoLayoutTargets(nodes, edges) {
+  if (nodes.length === 0) return {};
+
+  const connectedIds = new Set();
+  edges.forEach((e) => {
+    if (e.source !== e.target) {
+      connectedIds.add(e.source);
+      connectedIds.add(e.target);
+    }
+  });
+  const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
+  const isolatedNodes = nodes.filter((n) => !connectedIds.has(n.id));
+
+  const targets = {};
+  let dagreBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+  if (connectedNodes.length > 0) {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: 'LR', nodesep: 40, ranksep: 100, marginx: 40, marginy: 40 });
+    g.setDefaultEdgeLabel(() => ({}));
+    connectedNodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+    edges.forEach((e) => {
+      if (e.source !== e.target && connectedIds.has(e.source) && connectedIds.has(e.target)) {
+        g.setEdge(e.source, e.target);
+      }
+    });
+    dagre.layout(g);
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    connectedNodes.forEach((n) => {
+      const p = g.node(n.id);
+      if (!p) return;
+      const x = Math.round(p.x - NODE_WIDTH / 2);
+      const y = Math.round(p.y - NODE_HEIGHT / 2);
+      targets[n.id] = { x, y };
+      if (x < minX) minX = x;
+      if (y < minY) minY = y;
+      if (x + NODE_WIDTH > maxX) maxX = x + NODE_WIDTH;
+      if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
+    });
+    if (minX !== Infinity) dagreBounds = { minX, minY, maxX, maxY };
+  }
+
+  if (isolatedNodes.length > 0) {
+    const GAP_X = 24, GAP_Y = 24;
+    const startX = (connectedNodes.length > 0 ? dagreBounds.maxX + 80 : 40);
+    const startY = (connectedNodes.length > 0 ? dagreBounds.minY : 40);
+    const cols = Math.max(1, Math.min(12, Math.ceil(Math.sqrt(isolatedNodes.length))));
+    isolatedNodes.forEach((n, i) => {
+      const c = i % cols;
+      const r = Math.floor(i / cols);
+      targets[n.id] = {
+        x: startX + c * (NODE_WIDTH + GAP_X),
+        y: startY + r * (NODE_HEIGHT + GAP_Y),
+      };
+    });
+  }
+
+  return targets;
+}
+
+function _seedClusterPositionsFromMembers(clusters, nodes) {
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const out = {};
+  clusters.forEach((c) => {
+    let cx = 0, cy = 0, count = 0;
+    c.node_ids.forEach((nid) => {
+      const n = byId.get(nid);
+      if (n) { cx += n.position.x; cy += n.position.y; count++; }
+    });
+    if (count === 0) return;
+    cx /= count; cy /= count;
+    out[c.id] = {
+      x: Math.round(cx),
+      y: Math.round(cy),
+      width: NODE_WIDTH,
+      height: NODE_HEIGHT,
+    };
+  });
+  return out;
+}
+
+function _tweenLayout({ nodeTargets, clusterTargets, onComplete }, set, get) {
+  if (clusterRaf) cancelAnimationFrame(clusterRaf);
+
+  const { nodes, clusterPositions } = get();
+  const nodeStarts = {};
+  nodes.forEach((n) => {
+    if (nodeTargets[n.id]) nodeStarts[n.id] = { x: n.position.x, y: n.position.y };
+  });
+  const clusterStarts = {};
+  Object.keys(clusterTargets).forEach((cid) => {
+    const cur = clusterPositions[cid] || clusterTargets[cid];
+    clusterStarts[cid] = {
+      x: cur.x ?? clusterTargets[cid].x,
+      y: cur.y ?? clusterTargets[cid].y,
+      width: cur.width ?? clusterTargets[cid].width,
+      height: cur.height ?? clusterTargets[cid].height,
+    };
+  });
+
+  const t0 = performance.now();
+  const tick = (now) => {
+    const t = Math.min(1, (now - t0) / CLUSTER_ANIM_MS);
+    const k = ease(t);
+
+    set((state) => {
+      const newNodes = state.nodes.map((n) => {
+        const s = nodeStarts[n.id];
+        const e = nodeTargets[n.id];
+        if (!s || !e) return n;
+        return {
+          ...n,
+          position: {
+            x: Math.round(s.x + (e.x - s.x) * k),
+            y: Math.round(s.y + (e.y - s.y) * k),
+          },
+        };
+      });
+      const newClusterPositions = { ...state.clusterPositions };
+      Object.keys(clusterTargets).forEach((cid) => {
+        const s = clusterStarts[cid];
+        const e = clusterTargets[cid];
+        newClusterPositions[cid] = {
+          x: Math.round(s.x + (e.x - s.x) * k),
+          y: Math.round(s.y + (e.y - s.y) * k),
+          width: Math.round(s.width + (e.width - s.width) * k),
+          height: Math.round(s.height + (e.height - s.height) * k),
+        };
+      });
+      return { nodes: newNodes, clusterPositions: newClusterPositions };
+    });
+
+    if (t < 1) {
+      clusterRaf = requestAnimationFrame(tick);
+    } else {
+      clusterRaf = null;
+      if (onComplete) onComplete();
+    }
+  };
+  clusterRaf = requestAnimationFrame(tick);
+}
+
+const CLUSTER_NODE_WIDTH = 240;
+const CLUSTER_NODE_HEIGHT = 140;
 
 const useGraphStore = create((set, get) => ({
   nodes: defaultNodes,
@@ -21,6 +180,27 @@ const useGraphStore = create((set, get) => ({
   graphId: null,
   loading: false,
   error: null,
+
+  // Cluster state
+  clusters: [],
+  clusterEdges: [],
+  nodeClusterMap: {},
+  expandedClusters: new Set(),
+  clusterView: false,  // false = flat view, true = package/cluster view
+  clusterPositions: {},
+  // Snapshot of node positions in flat view, captured on first switch INTO
+  // cluster mode. Used to tween nodes back to their flat layout when cluster
+  // view is turned off.
+  flatPositions: {},
+
+  // Filter state
+  filters: {},
+  filterOptions: null,
+  filterLoading: false,
+  filteredCounts: null,  // { total_nodes, total_edges, filtered_nodes, filtered_edges }
+  // Stash the full unfiltered graph so we can restore when filters are cleared
+  _unfilteredNodes: null,
+  _unfilteredEdges: null,
 
   loadGraph: async (graphId) => {
     set({ loading: true, error: null });
@@ -162,12 +342,11 @@ const useGraphStore = create((set, get) => ({
       }
 
       const layoutNodes = rawNodes.map((n) => ({ ...n, position: positions[n.id] || { x: 0, y: 0 } }));
-      const firstSource = layoutNodes.find((n) => n.category === 'source')?.id || layoutNodes[0]?.id || null;
 
       set({
         nodes: layoutNodes,
         edges: rawEdges,
-        selectedNodeId: firstSource,
+        selectedNodeId: null,
         selectedFile: null,
         sourceFiles,
         graphId: graphId,
@@ -225,34 +404,228 @@ const useGraphStore = create((set, get) => ({
       edges: state.edges.filter((e) => e.id !== id),
     })),
 
+  // --- Cluster actions ---
+
+  loadClusters: async () => {
+    const { graphId } = get();
+    if (!graphId) return;
+    try {
+      const res = await fetch(`${API_BASE}/graph/${graphId}/clusters`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const clusters = data.clusters || [];
+      // Seed cards at member centroids so they animate out from their
+      // original on-canvas region rather than popping into final dagre slots.
+      const seed = _seedClusterPositionsFromMembers(clusters, get().nodes);
+      set({
+        clusters,
+        clusterEdges: data.cluster_edges || [],
+        nodeClusterMap: data.node_cluster_map || {},
+        clusterPositions: seed,
+      });
+      get().layoutClusters({ animate: true });
+    } catch (e) {
+      console.warn('Failed to load clusters:', e);
+    }
+  },
+
+  toggleClusterView: () => {
+    const { clusterView, clusters, graphId, nodes } = get();
+    const next = !clusterView;
+    if (next && !graphId) return;
+
+    if (next) {
+      // Entering cluster mode — snapshot current flat positions for the
+      // future "back to flat" tween, and seed cluster cards at member
+      // centroids (small) so they grow into their dagre slots.
+      const snapshot = {};
+      nodes.forEach((n) => {
+        snapshot[n.id] = { x: n.position.x, y: n.position.y };
+      });
+      const seed = clusters.length > 0 ? _seedClusterPositionsFromMembers(clusters, nodes) : {};
+      set({
+        clusterView: true,
+        flatPositions: snapshot,
+        expandedClusters: new Set(),
+        clusterPositions: seed,
+      });
+
+      if (clusters.length === 0) {
+        get().loadClusters();
+      } else {
+        get().layoutClusters({ animate: true });
+      }
+    } else {
+      // Leaving cluster mode — recompute the auto-layout fresh and tween
+      // nodes there (so the user lands in a tidy graph regardless of what
+      // the flat snapshot was). Cluster cards shrink toward each member set's
+      // centroid in the new layout, then unmount.
+      const { clusters, edges, nodes } = get();
+      const layoutTargets = _computeAutoLayoutTargets(nodes, edges);
+      const targetNodes = Object.entries(layoutTargets).map(([id, p]) => ({ id, position: p }));
+      const shrinkTargets = _seedClusterPositionsFromMembers(clusters, targetNodes);
+      _tweenLayout({
+        nodeTargets: layoutTargets,
+        clusterTargets: shrinkTargets,
+        onComplete: () => set({ clusterView: false, expandedClusters: new Set(), clusterPositions: {} }),
+      }, set, get);
+    }
+  },
+
+  toggleCluster: (clusterId) => {
+    const { expandedClusters } = get();
+    const next = new Set(expandedClusters);
+    if (next.has(clusterId)) next.delete(clusterId);
+    else next.add(clusterId);
+    set({ expandedClusters: next });
+    // Re-layout (animated) to account for the size change.
+    get().layoutClusters({ animate: true });
+  },
+
+  layoutClusters: ({ animate = true } = {}) => {
+    const { clusters, clusterEdges, expandedClusters } = get();
+    if (clusters.length === 0) return;
+
+    // ── Compute target cluster + node positions via dagre ──
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: 'LR', nodesep: 60, ranksep: 120, marginx: 60, marginy: 60 });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    clusters.forEach((c) => {
+      let w = CLUSTER_NODE_WIDTH;
+      let h = CLUSTER_NODE_HEIGHT;
+      if (expandedClusters.has(c.id)) {
+        const memberCount = c.node_ids.length;
+        const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(memberCount))));
+        const rows = Math.ceil(memberCount / cols);
+        w = Math.max(CLUSTER_NODE_WIDTH, cols * (NODE_WIDTH + 24) + 48);
+        h = Math.max(CLUSTER_NODE_HEIGHT, rows * (NODE_HEIGHT + 24) + 80);
+      }
+      g.setNode(c.id, { width: w, height: h });
+    });
+
+    clusterEdges.forEach((e) => g.setEdge(e.source, e.target));
+    dagre.layout(g);
+
+    const clusterTargets = {};
+    const nodeTargets = {};
+
+    clusters.forEach((c) => {
+      const p = g.node(c.id);
+      if (!p) return;
+      const w = p.width;
+      const h = p.height;
+      const cx = Math.round(p.x - w / 2);
+      const cy = Math.round(p.y - h / 2);
+      clusterTargets[c.id] = { x: cx, y: cy, width: w, height: h };
+
+      // For expanded clusters: lay member nodes out in a grid inside the box.
+      // For collapsed clusters: park members at the cluster center so they
+      // tween in cleanly the next time the cluster expands.
+      const memberIds = c.node_ids;
+      if (expandedClusters.has(c.id)) {
+        const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(memberIds.length))));
+        const padX = 24, padTop = 56, gapX = 24, gapY = 24;
+        memberIds.forEach((nid, i) => {
+          const col = i % cols;
+          const row = Math.floor(i / cols);
+          nodeTargets[nid] = {
+            x: cx + padX + col * (NODE_WIDTH + gapX),
+            y: cy + padTop + row * (NODE_HEIGHT + gapY),
+          };
+        });
+      } else {
+        const centerX = cx + w / 2 - NODE_WIDTH / 2;
+        const centerY = cy + h / 2 - NODE_HEIGHT / 2;
+        memberIds.forEach((nid) => {
+          nodeTargets[nid] = { x: centerX, y: centerY };
+        });
+      }
+    });
+
+    if (!animate) {
+      set((state) => ({
+        clusterPositions: clusterTargets,
+        nodes: state.nodes.map((n) => (nodeTargets[n.id] ? { ...n, position: nodeTargets[n.id] } : n)),
+      }));
+      return;
+    }
+    _tweenLayout({ nodeTargets, clusterTargets }, set, get);
+  },
+
   autoLayout: ({ animate = true } = {}) => {
     const { nodes, edges } = get();
     if (nodes.length === 0) return;
 
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({
-      rankdir: 'LR',
-      nodesep: 40,
-      ranksep: 100,
-      marginx: 40,
-      marginy: 40,
-    });
-    g.setDefaultEdgeLabel(() => ({}));
-
-    nodes.forEach((n) => {
-      g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-    });
+    // Split: connected nodes go to dagre, isolated nodes get grid-packed
+    // separately so they don't form a tall vertical column.
+    const connectedIds = new Set();
     edges.forEach((e) => {
-      if (e.source !== e.target) g.setEdge(e.source, e.target);
+      if (e.source !== e.target) {
+        connectedIds.add(e.source);
+        connectedIds.add(e.target);
+      }
     });
-
-    dagre.layout(g);
+    const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
+    const isolatedNodes = nodes.filter((n) => !connectedIds.has(n.id));
 
     const targets = {};
-    nodes.forEach((n) => {
-      const p = g.node(n.id);
-      if (p) targets[n.id] = { x: Math.round(p.x - NODE_WIDTH / 2), y: Math.round(p.y - NODE_HEIGHT / 2) };
-    });
+    let dagreBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+    if (connectedNodes.length > 0) {
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({
+        rankdir: 'LR',
+        nodesep: 40,
+        ranksep: 100,
+        marginx: 40,
+        marginy: 40,
+      });
+      g.setDefaultEdgeLabel(() => ({}));
+
+      connectedNodes.forEach((n) => {
+        g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+      });
+      edges.forEach((e) => {
+        if (e.source !== e.target && connectedIds.has(e.source) && connectedIds.has(e.target)) {
+          g.setEdge(e.source, e.target);
+        }
+      });
+
+      dagre.layout(g);
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      connectedNodes.forEach((n) => {
+        const p = g.node(n.id);
+        if (!p) return;
+        const x = Math.round(p.x - NODE_WIDTH / 2);
+        const y = Math.round(p.y - NODE_HEIGHT / 2);
+        targets[n.id] = { x, y };
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x + NODE_WIDTH > maxX) maxX = x + NODE_WIDTH;
+        if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
+      });
+      if (minX !== Infinity) dagreBounds = { minX, minY, maxX, maxY };
+    }
+
+    // Grid-pack isolated nodes to the right of the dagre cluster.
+    if (isolatedNodes.length > 0) {
+      const GAP_X = 24;
+      const GAP_Y = 24;
+      const startX = (connectedNodes.length > 0 ? dagreBounds.maxX + 80 : 40);
+      const startY = (connectedNodes.length > 0 ? dagreBounds.minY : 40);
+      // Aim for a roughly square block; cap columns so it doesn't go too wide.
+      const cols = Math.max(1, Math.min(12, Math.ceil(Math.sqrt(isolatedNodes.length))));
+      isolatedNodes.forEach((n, i) => {
+        const c = i % cols;
+        const r = Math.floor(i / cols);
+        targets[n.id] = {
+          x: startX + c * (NODE_WIDTH + GAP_X),
+          y: startY + r * (NODE_HEIGHT + GAP_Y),
+        };
+      });
+    }
 
     if (!animate) {
       set((state) => ({
@@ -291,6 +664,96 @@ const useGraphStore = create((set, get) => ({
       }
     };
     layoutRaf = requestAnimationFrame(tick);
+  },
+
+  // --- Filter actions ---
+
+  loadFilterOptions: async () => {
+    const { graphId } = get();
+    if (!graphId) return;
+    try {
+      const res = await fetch(`${API_BASE}/graph/${graphId}/filter-options`);
+      if (!res.ok) return;
+      const data = await res.json();
+      set({ filterOptions: data });
+    } catch (e) {
+      console.warn('Failed to load filter options:', e);
+    }
+  },
+
+  setFilter: (key, value) => set((state) => {
+    const next = { ...state.filters };
+    if (value === null || value === undefined || (Array.isArray(value) && value.length === 0)) {
+      delete next[key];
+    } else {
+      next[key] = value;
+    }
+    return { filters: next };
+  }),
+
+  clearFilters: () => {
+    const { _unfilteredNodes, _unfilteredEdges } = get();
+    const updates = { filters: {}, filteredCounts: null };
+    if (_unfilteredNodes) {
+      updates.nodes = _unfilteredNodes;
+      updates.edges = _unfilteredEdges;
+      updates._unfilteredNodes = null;
+      updates._unfilteredEdges = null;
+    }
+    set(updates);
+  },
+
+  applyFilters: async () => {
+    const { graphId, filters, nodes, edges, _unfilteredNodes } = get();
+    if (!graphId) return;
+
+    // Stash the full graph on first filter application
+    if (!_unfilteredNodes) {
+      set({ _unfilteredNodes: nodes, _unfilteredEdges: edges });
+    }
+
+    // If no active filters, restore the full graph
+    if (Object.keys(filters).length === 0) {
+      get().clearFilters();
+      return;
+    }
+
+    set({ filterLoading: true });
+    try {
+      const res = await fetch(`${API_BASE}/graph/${graphId}/filter`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(filters),
+      });
+      if (!res.ok) throw new Error(`Filter failed: ${res.status}`);
+      const data = await res.json();
+
+      // The backend returns raw nodes/edges — transform them the same way loadGraph does
+      const fullNodes = get()._unfilteredNodes || nodes;
+      const filteredIds = new Set(data.nodes.map((n) => n.id));
+      const filteredNodes = fullNodes.filter((n) => filteredIds.has(n.id));
+      const filteredEdges = (get()._unfilteredEdges || edges).filter(
+        (e) => filteredIds.has(e.source) && filteredIds.has(e.target)
+      );
+
+      set({
+        nodes: filteredNodes,
+        edges: filteredEdges,
+        filterLoading: false,
+        filteredCounts: {
+          total_nodes: data.total_nodes,
+          total_edges: data.total_edges,
+          filtered_nodes: data.filtered_nodes,
+          filtered_edges: data.filtered_edges,
+        },
+      });
+
+      // Re-layout after filter
+      get().autoLayout({ animate: true });
+    } catch (e) {
+      set({ filterLoading: false });
+      console.warn('Filter error:', e);
+    }
   },
 }));
 

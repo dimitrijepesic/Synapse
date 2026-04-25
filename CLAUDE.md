@@ -1,4 +1,4 @@
-# CodeGraph — Project Conventions
+# Synapsis — Project Conventions
 
 ## What This Is
 

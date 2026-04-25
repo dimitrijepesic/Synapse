@@ -5,6 +5,7 @@ import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
 import { defaultFileTree, SOURCE_FILES } from '../data/mockData';
 import { API_BASE, ENDPOINTS } from '../types/api';
+import { FilterPanel } from '../components/FilterPanel';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
@@ -146,7 +147,7 @@ function computeSelfLoopArrow(node) {
 // --- Main Workspace ---
 
 export default function Workspace() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, filters, filteredCounts } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -160,6 +161,10 @@ export default function Workspace() {
   }, [searchParams]);
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
+
+  // Filter panel state
+  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
+  const activeFilterCount = Object.keys(filters).length;
 
   // Codebase overview state
   const [overview, setOverview] = useState(null);
@@ -267,6 +272,7 @@ export default function Workspace() {
   // Track canvas dimensions reactively
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
   useEffect(() => {
+    if (graphLoading || graphError) return;
     const el = canvasRef.current;
     if (!el) return;
     const measure = () => setCanvasSize({ w: el.clientWidth, h: el.clientHeight });
@@ -274,7 +280,7 @@ export default function Workspace() {
     const obs = new ResizeObserver(measure);
     obs.observe(el);
     return () => obs.disconnect();
-  }, []);
+  }, [graphLoading, graphError]);
 
   // Run dagre auto-layout once on mount so the initial graph isn't a tangle
   useEffect(() => {
@@ -284,6 +290,7 @@ export default function Workspace() {
 
   // Wheel: pinch-to-zoom (ctrlKey) or two-finger-scroll to pan
   useEffect(() => {
+    if (graphLoading || graphError) return;
     const el = canvasRef.current;
     if (!el) return;
     const handler = (e) => {
@@ -308,7 +315,7 @@ export default function Workspace() {
     };
     el.addEventListener('wheel', handler, { passive: false });
     return () => el.removeEventListener('wheel', handler);
-  }, []);
+  }, [graphLoading, graphError]);
 
   // Canvas mousedown: pan (drag) or deselect (click)
   const handleCanvasMouseDown = useCallback(
@@ -407,7 +414,7 @@ export default function Workspace() {
     <div className="flex flex-col h-screen font-body-md text-body-md text-on-surface overflow-hidden" style={{ backgroundColor: '#f9fafb' }}>
       <Header activePage="workspace" />
 
-      <div className="flex flex-1 pt-14 sm:pt-16 h-full overflow-hidden">
+      <div className="flex flex-1 pt-14 sm:pt-16 min-h-0 overflow-hidden">
         {/* Sidebar — icon rail + expandable explorer panel */}
         <SideNav
           project={project}
@@ -421,7 +428,7 @@ export default function Workspace() {
           onFunctionSelect={handleFunctionSelect}
         />
 
-        <main className="flex-1 flex h-full relative">
+        <main className="flex-1 flex min-h-0 relative">
           {/* Top-left toolbar: Auto Layout + classification filters */}
           <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-10 flex items-center gap-2">
             <button
@@ -465,6 +472,23 @@ export default function Workspace() {
               </span>
               <span className="font-label-sm">Dead Code</span>
             </button>
+            <button
+              onClick={toggleClusterView}
+              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
+                clusterView
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
+                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
+              }`}
+              title={clusterView ? 'Switch to flat view' : 'Switch to package view'}
+            >
+              <span
+                className="material-symbols-outlined text-[16px]"
+                style={clusterView ? { fontVariationSettings: "'FILL' 1" } : undefined}
+              >
+                {clusterView ? 'check' : 'package_2'}
+              </span>
+              <span className="font-label-sm">{clusterView ? 'Packaged' : 'Packages'}</span>
+            </button>
             <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
               {CANVAS_FILTERS.map((f) => {
                 const on = classFilter.has(f.id);
@@ -496,6 +520,30 @@ export default function Workspace() {
                 </button>
               )}
             </div>
+            <button
+              onClick={() => setFilterPanelOpen((v) => !v)}
+              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
+                filterPanelOpen || activeFilterCount > 0
+                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
+                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
+              }`}
+              title="Filter graph nodes"
+            >
+              <span className="material-symbols-outlined text-[16px]">filter_list</span>
+              <span className="font-label-sm">Filter</span>
+              {activeFilterCount > 0 && (
+                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
+                  filterPanelOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
+                }`}>
+                  {activeFilterCount}
+                </span>
+              )}
+            </button>
+            {filteredCounts && (
+              <span className="text-[11px] text-gray-500 font-label-sm self-center">
+                {filteredCounts.filtered_nodes}/{filteredCounts.total_nodes} nodes
+              </span>
+            )}
           </div>
 
           {/* Canvas */}
@@ -507,60 +555,162 @@ export default function Workspace() {
           >
             {/* Transform wrapper — everything inside zooms/pans together */}
             <div style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }}>
-              {/* SVG edges */}
-              <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
-                {edges.map((edge) => {
-                  const sourceNode = nodes.find((n) => n.id === edge.source);
-                  const targetNode = nodes.find((n) => n.id === edge.target);
-                  if (!sourceNode || !targetNode) return null;
-                  if (edge.source === edge.target) {
-                    return (
-                      <g key={edge.id}>
-                        <path
-                          className={getEdgeClasses(edge, selectedNodeId)}
-                          d={computeSelfLoopPath(sourceNode)}
-                        />
-                        <path
-                          className={getEdgeClasses(edge, selectedNodeId)}
-                          d={computeSelfLoopArrow(sourceNode)}
-                        />
-                      </g>
-                    );
-                  }
-                  const from = getHandlePosition(sourceNode, edge.sourceHandle);
-                  const to = getHandlePosition(targetNode, edge.targetHandle);
-                  return (
-                    <g key={edge.id}>
-                      <path
-                        className={getEdgeClasses(edge, selectedNodeId)}
-                        d={computeEdgePath(from, to)}
-                      />
-                      <path
-                        className={getEdgeClasses(edge, selectedNodeId)}
-                        d={computeArrowHead(to)}
-                      />
-                    </g>
-                  );
-                })}
-              </svg>
 
-              {/* Nodes */}
-              {nodes.map((node) => {
-                const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
-                const dimByFilter = !matchesClassFilter(node);
-                return (
-                  <NodeCard
-                    key={node.id}
-                    node={node}
-                    isSelected={node.id === selectedNodeId}
-                    isDimmed={dimByNeighbor || dimByFilter}
-                    edges={edges}
-                    onSelect={() => selectNode(node.id)}
-                    onMove={(pos) => moveNode(node.id, pos)}
-                    zoom={zoom}
-                  />
-                );
-              })}
+              {clusterView ? (
+                <>
+                  {/* === CLUSTER / PACKAGE VIEW === */}
+
+                  {/* Cluster-level edges */}
+                  <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 8000, height: 8000, overflow: 'visible' }}>
+                    {clusterEdges.map((ce, i) => {
+                      const sp = clusterPositions[ce.source];
+                      const tp = clusterPositions[ce.target];
+                      if (!sp || !tp) return null;
+                      const from = { x: sp.x + sp.width, y: sp.y + sp.height / 2 };
+                      const to = { x: tp.x, y: tp.y + tp.height / 2 };
+                      return (
+                        <g key={`ce-${i}`}>
+                          <path
+                            className="connection-line"
+                            d={computeEdgePath(from, to)}
+                            style={{ strokeWidth: Math.min(4, 1 + ce.weight * 0.5), opacity: 0.5 }}
+                          />
+                          <path
+                            className="connection-line"
+                            d={computeArrowHead(to)}
+                            style={{ opacity: 0.5 }}
+                          />
+                          {ce.weight > 1 && (
+                            <text
+                              x={(from.x + to.x) / 2}
+                              y={(from.y + to.y) / 2 - 8}
+                              textAnchor="middle"
+                              className="fill-gray-400"
+                              style={{ fontSize: 10, fontFamily: 'inherit' }}
+                            >
+                              {ce.weight}
+                            </text>
+                          )}
+                        </g>
+                      );
+                    })}
+
+                    {/* Edges between nodes in expanded clusters */}
+                    {edges.map((edge) => {
+                      const srcCluster = nodeClusterMap[edge.source];
+                      const tgtCluster = nodeClusterMap[edge.target];
+                      // Only show node-level edges if both ends are in expanded clusters
+                      const srcExpanded = srcCluster && expandedClusters.has(srcCluster);
+                      const tgtExpanded = tgtCluster && expandedClusters.has(tgtCluster);
+                      if (!srcExpanded && !tgtExpanded) return null;
+
+                      const sourceNode = nodes.find((n) => n.id === edge.source);
+                      const targetNode = nodes.find((n) => n.id === edge.target);
+                      if (!sourceNode || !targetNode) return null;
+
+                      if (edge.source === edge.target) {
+                        return (
+                          <g key={edge.id}>
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopPath(sourceNode)} />
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopArrow(sourceNode)} />
+                          </g>
+                        );
+                      }
+                      const from = getHandlePosition(sourceNode, edge.sourceHandle);
+                      const to = getHandlePosition(targetNode, edge.targetHandle);
+                      return (
+                        <g key={edge.id}>
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeEdgePath(from, to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeArrowHead(to)} />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Cluster cards */}
+                  {clusters.map((cluster) => {
+                    const pos = clusterPositions[cluster.id];
+                    if (!pos) return null;
+                    const isExpanded = expandedClusters.has(cluster.id);
+                    return (
+                      <ClusterCard
+                        key={cluster.id}
+                        cluster={cluster}
+                        position={pos}
+                        isExpanded={isExpanded}
+                        onToggle={() => toggleCluster(cluster.id)}
+                      />
+                    );
+                  })}
+
+                  {/* Nodes inside expanded clusters */}
+                  {nodes.map((node) => {
+                    const clusterId = nodeClusterMap[node.id];
+                    if (!clusterId || !expandedClusters.has(clusterId)) return null;
+                    const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
+                    const dimByFilter = !matchesClassFilter(node);
+                    return (
+                      <NodeCard
+                        key={node.id}
+                        node={node}
+                        isSelected={node.id === selectedNodeId}
+                        isDimmed={dimByNeighbor || dimByFilter}
+                        edges={edges}
+                        onSelect={() => selectNode(node.id)}
+                        onMove={(pos) => moveNode(node.id, pos)}
+                        zoom={zoom}
+                      />
+                    );
+                  })}
+                </>
+              ) : (
+                <>
+                  {/* === FLAT VIEW (original) === */}
+
+                  {/* SVG edges */}
+                  <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
+                    {edges.map((edge) => {
+                      const sourceNode = nodes.find((n) => n.id === edge.source);
+                      const targetNode = nodes.find((n) => n.id === edge.target);
+                      if (!sourceNode || !targetNode) return null;
+                      if (edge.source === edge.target) {
+                        return (
+                          <g key={edge.id}>
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopPath(sourceNode)} />
+                            <path className={getEdgeClasses(edge, selectedNodeId)} d={computeSelfLoopArrow(sourceNode)} />
+                          </g>
+                        );
+                      }
+                      const from = getHandlePosition(sourceNode, edge.sourceHandle);
+                      const to = getHandlePosition(targetNode, edge.targetHandle);
+                      return (
+                        <g key={edge.id}>
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeEdgePath(from, to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeArrowHead(to)} />
+                        </g>
+                      );
+                    })}
+                  </svg>
+
+                  {/* Nodes */}
+                  {nodes.map((node) => {
+                    const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
+                    const dimByFilter = !matchesClassFilter(node);
+                    return (
+                      <NodeCard
+                        key={node.id}
+                        node={node}
+                        isSelected={node.id === selectedNodeId}
+                        isDimmed={dimByNeighbor || dimByFilter}
+                        edges={edges}
+                        onSelect={() => selectNode(node.id)}
+                        onMove={(pos) => moveNode(node.id, pos)}
+                        zoom={zoom}
+                      />
+                    );
+                  })}
+                </>
+              )}
             </div>
 
             {/* Minimap — stays fixed in viewport */}
@@ -595,6 +745,9 @@ export default function Workspace() {
             open={ui.codePanelOpen && !!selectedNode}
             onClose={toggleCodePanel}
           />
+
+          {/* Filter Panel */}
+          <FilterPanel open={filterPanelOpen} onClose={() => setFilterPanelOpen(false)} />
 
           {/* Reopen button — top-right, visible when a node is selected but panel is closed */}
           {selectedNode && !ui.codePanelOpen && (
@@ -791,7 +944,7 @@ function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNo
   const panelTitle = activeTab === 'functions' ? 'Functions' : 'Explorer';
 
   return (
-    <div className="flex h-full shrink-0 z-40">
+    <div className="flex min-h-0 shrink-0 z-40">
       {/* Icon rail */}
       <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-4 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
         {/* Tab buttons — top */}
@@ -1122,6 +1275,117 @@ function FunctionRow({ node, active, onSelect }) {
   );
 }
 
+// --- Cluster / Package Card ---
+
+const CLUSTER_COLORS = [
+  { bg: 'bg-indigo-50', border: 'border-indigo-200', accent: 'text-indigo-600', headerBg: 'bg-indigo-100', ring: 'ring-indigo-300' },
+  { bg: 'bg-emerald-50', border: 'border-emerald-200', accent: 'text-emerald-600', headerBg: 'bg-emerald-100', ring: 'ring-emerald-300' },
+  { bg: 'bg-amber-50', border: 'border-amber-200', accent: 'text-amber-600', headerBg: 'bg-amber-100', ring: 'ring-amber-300' },
+  { bg: 'bg-rose-50', border: 'border-rose-200', accent: 'text-rose-600', headerBg: 'bg-rose-100', ring: 'ring-rose-300' },
+  { bg: 'bg-cyan-50', border: 'border-cyan-200', accent: 'text-cyan-600', headerBg: 'bg-cyan-100', ring: 'ring-cyan-300' },
+  { bg: 'bg-violet-50', border: 'border-violet-200', accent: 'text-violet-600', headerBg: 'bg-violet-100', ring: 'ring-violet-300' },
+  { bg: 'bg-orange-50', border: 'border-orange-200', accent: 'text-orange-600', headerBg: 'bg-orange-100', ring: 'ring-orange-300' },
+  { bg: 'bg-teal-50', border: 'border-teal-200', accent: 'text-teal-600', headerBg: 'bg-teal-100', ring: 'ring-teal-300' },
+];
+
+function clusterColorIndex(clusterId) {
+  let hash = 0;
+  for (let i = 0; i < clusterId.length; i++) hash = ((hash << 5) - hash + clusterId.charCodeAt(i)) | 0;
+  return Math.abs(hash) % CLUSTER_COLORS.length;
+}
+
+function ClusterCard({ cluster, position, isExpanded, onToggle }) {
+  const colors = CLUSTER_COLORS[clusterColorIndex(cluster.id)];
+  const testCount = cluster.category_breakdown?.test || 0;
+  const sourceCount = cluster.category_breakdown?.source || 0;
+
+  return (
+    <div
+      className="absolute z-[5]"
+      style={{
+        top: position.y,
+        left: position.x,
+        width: position.width,
+        height: position.height,
+      }}
+    >
+      <div
+        className={`
+          h-full rounded-xl border-2 ${colors.border} ${colors.bg}
+          ${isExpanded ? 'ring-2 ' + colors.ring : ''}
+          transition-all duration-300 overflow-hidden
+          ${isExpanded ? '' : 'cursor-pointer hover:shadow-lg hover:scale-[1.02]'}
+        `}
+        style={{ transition: 'box-shadow 0.2s, transform 0.2s' }}
+      >
+        {/* Header bar */}
+        <div
+          className={`${colors.headerBg} px-4 py-3 flex items-center gap-2.5 cursor-pointer select-none`}
+          onClick={onToggle}
+        >
+          <span className={`material-symbols-outlined text-[20px] ${colors.accent}`}>
+            {isExpanded ? 'folder_open' : 'folder'}
+          </span>
+          <div className="flex-1 min-w-0">
+            <div className={`font-semibold text-[14px] ${colors.accent} truncate`}>
+              {cluster.ai_label || cluster.label}
+            </div>
+            {cluster.directory && (
+              <div className="text-[10px] text-gray-400 truncate">
+                {cluster.directory}
+              </div>
+            )}
+          </div>
+          <span className={`material-symbols-outlined text-[18px] ${colors.accent} transition-transform ${isExpanded ? 'rotate-180' : ''}`}>
+            expand_more
+          </span>
+        </div>
+
+        {/* Collapsed body: stats */}
+        {!isExpanded && (
+          <div className="px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-center gap-3">
+              <div className="flex items-center gap-1">
+                <span className="material-symbols-outlined text-[14px] text-gray-400">function</span>
+                <span className="text-[12px] text-gray-600 font-medium">{cluster.node_count}</span>
+                <span className="text-[10px] text-gray-400">functions</span>
+              </div>
+              {cluster.internal_edge_count > 0 && (
+                <div className="flex items-center gap-1">
+                  <span className="material-symbols-outlined text-[14px] text-gray-400">call_split</span>
+                  <span className="text-[12px] text-gray-600 font-medium">{cluster.internal_edge_count}</span>
+                  <span className="text-[10px] text-gray-400">calls</span>
+                </div>
+              )}
+            </div>
+            <div className="flex gap-1.5 flex-wrap">
+              {sourceCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-white/70 text-[10px] text-gray-500 border border-gray-200">
+                  {sourceCount} source
+                </span>
+              )}
+              {testCount > 0 && (
+                <span className="px-2 py-0.5 rounded-full bg-green-50 text-[10px] text-green-600 border border-green-200">
+                  {testCount} test
+                </span>
+              )}
+              {cluster.container && (
+                <span className={`px-2 py-0.5 rounded-full bg-white/70 text-[10px] ${colors.accent} border ${colors.border}`}>
+                  {cluster.container}
+                </span>
+              )}
+            </div>
+            <div className="text-[10px] text-gray-400 mt-0.5 flex items-center gap-1">
+              <span className="material-symbols-outlined text-[12px]">touch_app</span>
+              Click to expand
+            </div>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
 // --- Draggable Node Card ---
 
 function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove, zoom = 1 }) {
@@ -1245,11 +1509,15 @@ function CodePanel({ node, open, onClose }) {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
+  const [displayedSummary, setDisplayedSummary] = useState('');
+  const [summaryRevealed, setSummaryRevealed] = useState(false);
   // Impact analysis state
   const [impact, setImpact] = useState(null);
   const [impactNarrative, setImpactNarrative] = useState(null);
   const [impactLoading, setImpactLoading] = useState(false);
   const [impactError, setImpactError] = useState(null);
+  const [displayedImpact, setDisplayedImpact] = useState('');
+  const [impactRevealed, setImpactRevealed] = useState(false);
   const MIN_W = 280;
   const MAX_W = 700;
 
@@ -1263,6 +1531,69 @@ function CodePanel({ node, open, onClose }) {
     setImpactError(null);
     setImpactLoading(false);
   }, [node?.id]);
+
+  // Typewriter + smooth height-reveal for AI summary
+  useEffect(() => {
+    if (!summary) {
+      setDisplayedSummary('');
+      setSummaryRevealed(false);
+      return;
+    }
+    setDisplayedSummary('');
+    setSummaryRevealed(false);
+    // Two RAFs: commit the collapsed state, then flip to revealed so the
+    // grid-rows transition fires from 0fr → 1fr.
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setSummaryRevealed(true));
+    });
+    // Begin typing slightly after the height-reveal starts.
+    let i = 0;
+    const typingDelay = setTimeout(() => {
+      const id = setInterval(() => {
+        i = Math.min(i + 2, summary.length);
+        setDisplayedSummary(summary.slice(0, i));
+        if (i >= summary.length) clearInterval(id);
+      }, 15);
+      typingDelay.intervalId = id;
+    }, 120);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(typingDelay);
+      if (typingDelay.intervalId) clearInterval(typingDelay.intervalId);
+    };
+  }, [summary]);
+
+  // Typewriter + smooth height-reveal for impact narrative
+  useEffect(() => {
+    if (!impactNarrative) {
+      setDisplayedImpact('');
+      setImpactRevealed(false);
+      return;
+    }
+    setDisplayedImpact('');
+    setImpactRevealed(false);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setImpactRevealed(true));
+    });
+    let i = 0;
+    const typingDelay = setTimeout(() => {
+      const id = setInterval(() => {
+        i = Math.min(i + 2, impactNarrative.length);
+        setDisplayedImpact(impactNarrative.slice(0, i));
+        if (i >= impactNarrative.length) clearInterval(id);
+      }, 15);
+      typingDelay.intervalId = id;
+    }, 120);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(typingDelay);
+      if (typingDelay.intervalId) clearInterval(typingDelay.intervalId);
+    };
+  }, [impactNarrative]);
 
   const handleSummarize = useCallback(async () => {
     if (!node?.id) return;
@@ -1377,15 +1708,17 @@ function CodePanel({ node, open, onClose }) {
         </div>
       </div>
 
+      {/* Scrollable body: Node Analysis + Code view */}
+      <div className="flex-1 min-h-0 overflow-y-auto bg-white">
       {/* Node Analysis — top */}
-      <div className="border-b border-gray-200 bg-white flex flex-col shrink-0">
+      <div className="border-b border-gray-200 bg-white flex flex-col">
         <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
           <span className="font-label-sm text-gray-500 uppercase tracking-wider text-[10px]">Node Analysis</span>
           <div className="flex gap-1.5">
             <button
               onClick={handleSummarize}
               disabled={!node || summaryLoading}
-              className="flex items-center gap-1 text-[10px] font-label-sm text-primary hover:text-gray-900 transition-colors bg-primary/10 px-2 py-1 rounded border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-[10px] font-label-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-2 py-1 rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className={`material-symbols-outlined text-[12px] ${summaryLoading ? 'animate-spin' : ''}`}>
                 {summaryLoading ? 'progress_activity' : 'auto_awesome'}
@@ -1395,7 +1728,7 @@ function CodePanel({ node, open, onClose }) {
             <button
               onClick={handleImpactAnalysis}
               disabled={!node || impactLoading}
-              className="flex items-center gap-1 text-[10px] font-label-sm text-amber-700 hover:text-gray-900 transition-colors bg-amber-50 px-2 py-1 rounded border border-amber-200 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1 text-[10px] font-label-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-2 py-1 rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               <span className={`material-symbols-outlined text-[12px] ${impactLoading ? 'animate-spin' : ''}`}>
                 {impactLoading ? 'progress_activity' : 'bolt'}
@@ -1412,12 +1745,32 @@ function CodePanel({ node, open, onClose }) {
                 <p className="font-body-md text-sm text-rose-600 mb-3">{summaryError}</p>
               )}
               {summary && (
-                <div className="mb-3 px-3 py-2 rounded bg-primary/5 border border-primary/20">
+                <div className="mb-3">
                   <div className="flex items-center gap-1 mb-1.5">
                     <span className="material-symbols-outlined text-[12px] text-primary">auto_awesome</span>
                     <span className="font-label-sm text-[10px] text-primary uppercase tracking-wider">AI Summary</span>
                   </div>
-                  <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap">{summary}</p>
+                  <div
+                    className="grid transition-[grid-template-rows,opacity] duration-500 ease-out"
+                    style={{ gridTemplateRows: summaryRevealed ? '1fr' : '0fr', opacity: summaryRevealed ? 1 : 0 }}
+                  >
+                    <div className="min-h-0 overflow-hidden">
+                      <div
+                        className="relative text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap"
+                        style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
+                      >
+                        {/* Invisible full text reserves final height up-front */}
+                        <p aria-hidden className="invisible m-0">{summary}</p>
+                        {/* Visible typed portion overlays at the same position */}
+                        <p className="absolute inset-0 m-0">
+                          {displayedSummary}
+                          {displayedSummary.length < summary.length && (
+                            <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
+                          )}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
               {impactError && (
@@ -1430,10 +1783,28 @@ function CodePanel({ node, open, onClose }) {
                     <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">Impact Analysis</span>
                   </div>
                   {impactNarrative && (
-                    <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap mb-2">{impactNarrative}</p>
+                    <div
+                      className="grid transition-[grid-template-rows,opacity] duration-500 ease-out mb-2"
+                      style={{ gridTemplateRows: impactRevealed ? '1fr' : '0fr', opacity: impactRevealed ? 1 : 0 }}
+                    >
+                      <div className="min-h-0 overflow-hidden">
+                        <div
+                          className="relative text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap"
+                          style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
+                        >
+                          <p aria-hidden className="invisible m-0">{impactNarrative}</p>
+                          <p className="absolute inset-0 m-0">
+                            {displayedImpact}
+                            {displayedImpact.length < impactNarrative.length && (
+                              <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
                   )}
-                  {impact && impact.affected && impact.affected.length > 0 && (
-                    <div className="mt-1.5">
+                  {impact && impact.affected && impact.affected.length > 0 && (!impactNarrative || displayedImpact.length === impactNarrative.length) && (
+                    <div className="mt-1.5 animate-[fadeIn_300ms_ease-out]">
                       <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">
                         Affected nodes ({impact.affected.length})
                       </span>
@@ -1449,8 +1820,8 @@ function CodePanel({ node, open, onClose }) {
                       </div>
                     </div>
                   )}
-                  {impact && impact.affected && impact.affected.length === 0 && (
-                    <p className="text-[11px] text-gray-500">No downstream nodes affected.</p>
+                  {impact && impact.affected && impact.affected.length === 0 && (!impactNarrative || displayedImpact.length === impactNarrative.length) && (
+                    <p className="text-[11px] text-gray-500 animate-[fadeIn_300ms_ease-out]">No downstream nodes affected.</p>
                   )}
                 </div>
               )}
@@ -1493,7 +1864,7 @@ function CodePanel({ node, open, onClose }) {
       </div>
 
       {/* Code view — contained block */}
-      <div className="flex-1 overflow-y-auto p-4 bg-white relative">
+      <div className="p-4 bg-white relative">
         {node ? (
           <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
             <div className="px-3 py-1.5 border-b border-gray-200 bg-gray-100/60 flex items-center gap-2">
@@ -1507,6 +1878,7 @@ function CodePanel({ node, open, onClose }) {
         ) : (
           <p className="text-gray-400 text-sm font-label-sm">Click a node to view its source code.</p>
         )}
+      </div>
       </div>
     </aside>
   );

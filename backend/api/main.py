@@ -18,14 +18,16 @@ import zipfile
 ROOT = Path(__file__).resolve().parents[1]  # backend/
 sys.path.insert(0, str(ROOT))
 
-from llm.use_cases import explain_node, codebase_overview, impact_narrative
+from llm.use_cases import explain_node, codebase_overview, impact_narrative, chat_with_graph
 from ir_compiler.ir_compiler import (
     build_call_graph,
     predict_impact,
     get_node_with_neighbors,
     hotspots,
     dead_code,
+    safe_to_refactor,
 )
+from ir_compiler.clustering import compute_clusters, label_clusters_with_llm
 from parser import parse_repo
 from parser.registry import supported_extensions
 
@@ -36,6 +38,9 @@ GRAPHS: dict[str, dict] = {}
 
 # Currently active graph (last analyzed or the startup default)
 GRAPH: dict = {}
+
+# Cached cluster results keyed by graph_id
+CLUSTERS: dict[str, dict] = {}
 
 
 def _read_snippet(repo_dir: Path, file_rel: str, line: int, before: int = 2, after: int = 25) -> str:
@@ -113,6 +118,30 @@ class OverviewRequest(BaseModel):
 class ImpactNarrativeRequest(BaseModel):
     node_id: str
 
+class ChatRequest(BaseModel):
+    question: str
+    context_node_ids: list[str] = []
+
+
+class FilterRequest(BaseModel):
+    """Filters for narrowing down the call graph.
+    All fields are optional — only supplied filters are applied (AND logic).
+    """
+    categories: list[str] | None = None          # e.g. ["source", "test"]
+    function_kinds: list[str] | None = None       # e.g. ["method", "constructor"]
+    access_levels: list[str] | None = None        # e.g. ["public", "internal"]
+    files: list[str] | None = None                # exact file paths
+    file_pattern: str | None = None               # substring match on file path
+    containers: list[str] | None = None           # e.g. ["Store", "State"]
+    name_pattern: str | None = None               # substring match on function name
+    synthetic: bool | None = None
+    is_override: bool | None = None
+    reachable_from_public_api: bool | None = None
+    in_degree_min: int | None = None
+    in_degree_max: int | None = None
+    out_degree_min: int | None = None
+    out_degree_max: int | None = None
+
 
 # --- helpers ---
 def _require_node(node_id: str) -> dict:
@@ -167,7 +196,7 @@ def analyze(body: AnalyzeRequest):
         }
 
     # Clone into a temp dir
-    tmp_dir = tempfile.mkdtemp(prefix="codegraph_")
+    tmp_dir = tempfile.mkdtemp(prefix="synapsis_")
     clone_path = Path(tmp_dir) / repo_name
     try:
         print(f"[analyze] cloning {full_name} ...")
@@ -251,7 +280,7 @@ async def upload_codebase(file: UploadFile = File(...)):
             "edge_count": len(g["edges"]),
         }
 
-    tmp_dir = tempfile.mkdtemp(prefix="codegraph_upload_")
+    tmp_dir = tempfile.mkdtemp(prefix="synapsis_upload_")
     archive_path = Path(tmp_dir) / name
     extract_dir = Path(tmp_dir) / "src"
     extract_dir.mkdir()
@@ -389,3 +418,195 @@ def llm_impact_narrative(body: ImpactNarrativeRequest):
     result = _require_node(body.node_id)
     affected = predict_impact(GRAPH, body.node_id)
     return impact_narrative(result["node"], affected)
+
+
+@app.post("/llm/chat")
+def llm_chat(body: ChatRequest):
+    if not GRAPH:
+        raise HTTPException(400, "No graph loaded. Analyze a repo first.")
+
+    # Gather context nodes
+    context_nodes = []
+    for nid in body.context_node_ids:
+        result = get_node_with_neighbors(GRAPH, nid)
+        if result:
+            context_nodes.append(result)
+
+    # If no explicit context nodes, auto-select hotspots
+    if not context_nodes:
+        hot = hotspots(GRAPH, top_n=5)
+        for h in hot:
+            result = get_node_with_neighbors(GRAPH, h["id"])
+            if result:
+                context_nodes.append(result)
+
+    # Build metadata summary
+    graph_metadata = {
+        "node_count": len(GRAPH.get("nodes", [])),
+        "edge_count": len(GRAPH.get("edges", [])),
+        "hotspots": hotspots(GRAPH, top_n=8),
+    }
+
+    # Include clusters if computed
+    graph_id = GRAPH.get("graph_id", "")
+    cluster_data = CLUSTERS.get(graph_id)
+    cluster_summary = cluster_data["clusters"] if cluster_data else None
+
+    return chat_with_graph(
+        question=body.question,
+        graph_metadata=graph_metadata,
+        context_nodes=context_nodes,
+        clusters=cluster_summary,
+    )
+
+
+# --- filter endpoint ---
+def _apply_filters(nodes: list[dict], f: FilterRequest) -> list[dict]:
+    """Apply all non-None filters from FilterRequest to a node list."""
+    result = nodes
+
+    if f.categories is not None:
+        s = set(f.categories)
+        result = [n for n in result if n.get("category") in s]
+
+    if f.function_kinds is not None:
+        s = set(f.function_kinds)
+        result = [n for n in result if n.get("function_kind") in s]
+
+    if f.access_levels is not None:
+        s = set(f.access_levels)
+        result = [n for n in result if n.get("access_level") in s]
+
+    if f.files is not None:
+        s = set(f.files)
+        result = [n for n in result if n.get("file") in s]
+
+    if f.file_pattern is not None:
+        pat = f.file_pattern.lower()
+        result = [n for n in result if pat in n.get("file", "").lower()]
+
+    if f.containers is not None:
+        s = set(f.containers)
+        result = [n for n in result if n.get("container") in s]
+
+    if f.name_pattern is not None:
+        pat = f.name_pattern.lower()
+        result = [n for n in result if pat in n.get("name", "").lower()]
+
+    if f.synthetic is not None:
+        result = [n for n in result if n.get("synthetic", False) == f.synthetic]
+
+    if f.is_override is not None:
+        result = [n for n in result if n.get("is_override", False) == f.is_override]
+
+    if f.reachable_from_public_api is not None:
+        result = [n for n in result if n.get("reachable_from_public_api", False) == f.reachable_from_public_api]
+
+    if f.in_degree_min is not None:
+        result = [n for n in result if n.get("in_degree", 0) >= f.in_degree_min]
+
+    if f.in_degree_max is not None:
+        result = [n for n in result if n.get("in_degree", 0) <= f.in_degree_max]
+
+    if f.out_degree_min is not None:
+        result = [n for n in result if n.get("out_degree", 0) >= f.out_degree_min]
+
+    if f.out_degree_max is not None:
+        result = [n for n in result if n.get("out_degree", 0) <= f.out_degree_max]
+
+    return result
+
+
+@app.post("/graph/{graph_id}/filter")
+def filter_graph(graph_id: str, body: FilterRequest):
+    g = GRAPHS.get(graph_id)
+    if g is None:
+        raise HTTPException(404, f"Unknown graph: {graph_id}. Available: {list(GRAPHS.keys())}")
+
+    filtered_nodes = _apply_filters(g["nodes"], body)
+    filtered_ids = {n["id"] for n in filtered_nodes}
+
+    # Keep only edges where both source and target are in the filtered set
+    filtered_edges = [
+        e for e in g["edges"]
+        if e["source"] in filtered_ids and e["target"] in filtered_ids
+    ]
+
+    return {
+        "graph_id": graph_id,
+        "total_nodes": len(g["nodes"]),
+        "total_edges": len(g["edges"]),
+        "filtered_nodes": len(filtered_nodes),
+        "filtered_edges": len(filtered_edges),
+        "nodes": filtered_nodes,
+        "edges": filtered_edges,
+    }
+
+
+@app.get("/graph/{graph_id}/filter-options")
+def get_filter_options(graph_id: str):
+    """Return all distinct values for each filterable field so the frontend
+    can populate dropdowns/checkboxes without scanning the full node list."""
+    g = GRAPHS.get(graph_id)
+    if g is None:
+        raise HTTPException(404, f"Unknown graph: {graph_id}. Available: {list(GRAPHS.keys())}")
+
+    categories = set()
+    function_kinds = set()
+    access_levels = set()
+    files = set()
+    containers = set()
+
+    for n in g["nodes"]:
+        if v := n.get("category"):
+            categories.add(v)
+        if v := n.get("function_kind"):
+            function_kinds.add(v)
+        if v := n.get("access_level"):
+            access_levels.add(v)
+        if v := n.get("file"):
+            files.add(v)
+        if v := n.get("container"):
+            containers.add(v)
+
+    return {
+        "categories": sorted(categories),
+        "function_kinds": sorted(function_kinds),
+        "access_levels": sorted(access_levels),
+        "files": sorted(files),
+        "containers": sorted(containers),
+    }
+
+
+# --- cluster endpoints ---
+@app.get("/graph/{graph_id}/clusters")
+def get_clusters(graph_id: str, ai_labels: bool = False):
+    g = GRAPHS.get(graph_id)
+    if g is None:
+        raise HTTPException(404, f"Unknown graph: {graph_id}. Available: {list(GRAPHS.keys())}")
+
+    # Return cached if available
+    if graph_id in CLUSTERS:
+        return CLUSTERS[graph_id]
+
+    # Compute clusters
+    result = compute_clusters(g)
+
+    # Optionally add AI labels
+    if ai_labels:
+        try:
+            label_clusters_with_llm(result["clusters"], g)
+        except Exception:
+            pass  # LLM unavailable, keep heuristic labels
+
+    CLUSTERS[graph_id] = result
+    return result
+
+
+# --- safe-to-refactor endpoint ---
+@app.get("/query/safe-to-refactor")
+def get_safe_to_refactor():
+    if not GRAPH:
+        raise HTTPException(400, "No graph loaded.")
+    results = safe_to_refactor(GRAPH)
+    return {"name": "safe_to_refactor", "count": len(results), "results": results}

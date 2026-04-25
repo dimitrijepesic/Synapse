@@ -92,4 +92,7 @@ export const ENDPOINTS = {
   llmExplain: "/llm/explain-node",
   llmOverview: "/llm/overview",
   llmImpactNarrative: "/llm/impact-narrative",
+  clusters: (graphId) => `/graph/${graphId}/clusters`,
+  filterOptions: (graphId) => `/graph/${graphId}/filter-options`,
+  filter: (graphId) => `/graph/${graphId}/filter`,
 };

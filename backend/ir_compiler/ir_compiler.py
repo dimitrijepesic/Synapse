@@ -350,7 +350,108 @@ def predict_impact(graph: dict, node_id: str) -> list:
         })
 
     results.sort(key=lambda x: x["risk_score"], reverse=True)
-    return results[:30]
+    results = results[:30]
+
+    # Enrich with risk_level and color
+    for r in results:
+        r["risk_level"] = _risk_level(r["risk_score"])
+        r["color"] = _risk_color(r["risk_score"])
+
+    return results
+
+
+# ─── Risk helpers ────────────────────────────────────────────────────────────
+
+# Thresholds calibrated against typical call-graph score distributions:
+#   - distance-1 neighbor with weight 1 ≈ score 0.5
+#   - distance-2 neighbor with weight 1 ≈ score 0.23
+#   - hotspot with in_degree 20 at distance 1 ≈ score 1.7
+_RISK_HIGH_THRESHOLD = 0.7
+_RISK_MEDIUM_THRESHOLD = 0.3
+
+
+def _risk_level(score: float) -> str:
+    if score >= _RISK_HIGH_THRESHOLD:
+        return "high"
+    if score >= _RISK_MEDIUM_THRESHOLD:
+        return "medium"
+    return "low"
+
+
+def _risk_color(score: float) -> str:
+    """Map risk score to a hex color: green (#22c55e) → yellow (#eab308) → red (#ef4444)."""
+    # Clamp score into [0, 2] range for color interpolation
+    t = min(score / 1.5, 1.0)
+
+    if t <= 0.5:
+        # green → yellow
+        ratio = t / 0.5
+        r = int(0x22 + (0xea - 0x22) * ratio)
+        g = int(0xc5 + (0xb3 - 0xc5) * ratio)
+        b = int(0x5e + (0x08 - 0x5e) * ratio)
+    else:
+        # yellow → red
+        ratio = (t - 0.5) / 0.5
+        r = int(0xea + (0xef - 0xea) * ratio)
+        g = int(0xb3 + (0x44 - 0xb3) * ratio)
+        b = int(0x08 + (0x44 - 0x08) * ratio)
+
+    return f"#{r:02x}{g:02x}{b:02x}"
+
+
+# ─── Safe to Refactor ────────────────────────────────────────────────────────
+
+def safe_to_refactor(graph: dict) -> list[dict]:
+    """
+    Identify functions that are safe to refactor — low blast radius.
+
+    A function is safe to refactor when:
+      - in_degree <= 1  (called from at most one place)
+      - out_degree is irrelevant (what it calls doesn't affect callers)
+      - it's not a test function
+      - no test depends on it (no inbound edge from a test node)
+
+    Returns a list of node dicts with an added "reason" field.
+    """
+    node_map = {n["id"]: n for n in graph["nodes"]}
+
+    # Build reverse adjacency: who calls this node?
+    callers_of: dict[str, list[str]] = {}
+    for e in graph["edges"]:
+        callers_of.setdefault(e["target"], []).append(e["source"])
+
+    results = []
+    for node in graph["nodes"]:
+        if node["category"] == "test":
+            continue
+
+        nid = node["id"]
+        callers = callers_of.get(nid, [])
+        in_deg = node["in_degree"]
+
+        if in_deg > 1:
+            continue
+
+        # Check if any caller is a test
+        has_test_caller = any(
+            node_map.get(c, {}).get("category") == "test"
+            for c in callers
+        )
+
+        if in_deg == 0:
+            reason = "No callers — isolated function, change freely"
+        elif has_test_caller:
+            reason = "Single caller is a test — update test if signature changes"
+        else:
+            reason = "Single caller — limited blast radius"
+
+        results.append({
+            **node,
+            "safe_to_refactor": True,
+            "reason": reason,
+        })
+
+    return results
 
 
 # ─── Hotspots ─────────────────────────────────────────────────────────────────

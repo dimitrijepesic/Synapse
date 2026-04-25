@@ -1217,10 +1217,10 @@ if __name__ == "__main__":
     import sys
 
     ir_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        os.path.dirname(__file__), "..", "tests", "parser_tests", "output.json"
+        os.path.dirname(__file__), "..", "tests", "parser_tests", "test3_output.json"
     )
     out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-        os.path.dirname(__file__), "..", "tests", "ir_compiler_tests", "graph_output.json"
+        os.path.dirname(__file__), "..", "tests", "ir_compiler_tests", "external_test3_output.json"
     )
 
     with open(ir_path) as f:

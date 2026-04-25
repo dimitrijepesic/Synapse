@@ -7,8 +7,13 @@ export default function Login() {
         {/* Brand Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
+<<<<<<< HEAD
             <img src="https://i.imgur.com/HrjNptE.png" alt="Synapse" className="h-10 w-10 object-contain" />
             <h1 className="text-4xl font-black tracking-tighter text-deep-olive">Synapse</h1>
+=======
+            <span className="material-symbols-outlined text-[36px] text-indigo-600" style={{ fontVariationSettings: "'FILL' 1" }}>account_tree</span>
+            <h1 className="text-4xl font-black tracking-tighter text-gray-900">Synapsis</h1>
+>>>>>>> b09ae6ee342ec528536865d4b4f20610e40c5984
           </Link>
           <p className="text-sm text-gray-500 mt-2">Precision codebase intelligence.</p>
         </div>

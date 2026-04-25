@@ -6,8 +6,8 @@ const useProjectStore = create((set) => ({
 
   ui: {
     nodeEditorOpen: false,
-    codePanelOpen: true,
-    activeSideTab: 'functions',
+    codePanelOpen: false,
+    activeSideTab: null,
   },
 
   setProject: (project) => set({ project }),

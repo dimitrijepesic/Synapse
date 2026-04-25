@@ -1,4 +1,4 @@
-"""Three LLM use cases: explain node, codebase overview, impact narrative."""
+"""LLM use cases: explain node, codebase overview, impact narrative, graph chat."""
 from .cache import cached_complete
 
 
@@ -123,4 +123,118 @@ Write the impact narrative."""
         "narrative": resp.text,
         "tokens_used": resp.input_tokens + resp.output_tokens,
         "cached": resp.cached,
+    }
+
+
+# --- chat_with_graph ---
+
+CHAT_SYSTEM = """You are a senior software architect answering questions about a codebase.
+You have access to the call graph structure — you know which functions call which,
+their relationships, and overall architecture.
+
+Unlike a generic code assistant, you use STRUCTURAL context (call graph, clusters,
+dependencies) to give precise answers about how code flows, what depends on what,
+and why things are organized the way they are.
+
+Be concise but thorough. Use function names and file paths when relevant.
+If the graph context doesn't contain enough information to answer fully, say so."""
+
+
+def chat_with_graph(
+    question: str,
+    graph_metadata: dict,
+    context_nodes: list[dict],
+    clusters: list[dict] | None = None,
+) -> dict:
+    """
+    Answer a free-form question using the call graph as context.
+
+    Args:
+        question: User's question in natural language
+        graph_metadata: Summary stats (node_count, edge_count, hotspots, etc.)
+        context_nodes: Relevant nodes with their callers/callees
+        clusters: Optional cluster summary for architecture questions
+    """
+    # Build the context block
+    sections = []
+
+    # Graph overview
+    sections.append(f"CODEBASE OVERVIEW:")
+    sections.append(f"  Total functions: {graph_metadata.get('node_count', '?')}")
+    sections.append(f"  Total call edges: {graph_metadata.get('edge_count', '?')}")
+
+    # Top hotspots
+    hotspot_list = graph_metadata.get("hotspots", [])
+    if hotspot_list:
+        sections.append(f"\nTOP HOTSPOTS (most-called functions):")
+        for h in hotspot_list[:8]:
+            name = h.get("qualified_name", h.get("name", "?"))
+            sections.append(f"  - {name} (in_degree={h.get('in_degree', '?')})")
+
+    # Cluster summary
+    if clusters:
+        sections.append(f"\nARCHITECTURE CLUSTERS ({len(clusters)} groups):")
+        for c in clusters[:10]:
+            label = c.get("ai_label", c.get("label", c["id"]))
+            sections.append(
+                f"  - {label}: {c['node_count']} functions, "
+                f"{c['internal_edge_count']} internal calls"
+            )
+
+    # Context nodes (the ones most relevant to the question)
+    if context_nodes:
+        sections.append(f"\nRELEVANT FUNCTIONS ({len(context_nodes)} shown):")
+        for cn in context_nodes[:10]:
+            node = cn.get("node", cn)
+            callers = cn.get("callers", [])
+            callees = cn.get("callees", [])
+            sections.append(
+                f"\n  [{node.get('qualified_name', node.get('name', '?'))}]"
+                f"  file: {node.get('file', '?')}:{node.get('line', '?')}"
+            )
+            if node.get("signature"):
+                sig = node["signature"].replace("\r\n", " ").replace("\n", " ")[:120]
+                sections.append(f"  signature: {sig}")
+            if callers:
+                caller_names = ", ".join(
+                    c.get("qualified_name", c.get("name", "?")) for c in callers[:5]
+                )
+                sections.append(f"  called by: {caller_names}")
+            if callees:
+                callee_names = ", ".join(
+                    c.get("qualified_name", c.get("name", "?")) for c in callees[:5]
+                )
+                sections.append(f"  calls: {callee_names}")
+            snippet = node.get("code_snippet", "")
+            if snippet and not snippet.startswith("//"):
+                # Truncate long snippets
+                lines = snippet.split("\n")[:15]
+                sections.append(f"  code:\n" + "\n".join(f"    {l}" for l in lines))
+
+    context_block = "\n".join(sections)
+
+    user = f"""CALL GRAPH CONTEXT:
+{context_block}
+
+QUESTION: {question}"""
+
+    # Use a content signature that captures the question + key context
+    sig_parts = [question[:200]]
+    for cn in context_nodes[:3]:
+        node = cn.get("node", cn)
+        sig_parts.append(node.get("id", ""))
+
+    resp = cached_complete(
+        use_case="chat_with_graph",
+        params={"question_hash": hash(question) % (10**8)},
+        content_signature="|".join(sig_parts),
+        system=CHAT_SYSTEM,
+        user=user,
+        max_tokens=800,
+    )
+    return {
+        "answer": resp.text,
+        "tokens_used": resp.input_tokens + resp.output_tokens,
+        "cached": resp.cached,
+        "context_node_count": len(context_nodes),
     }

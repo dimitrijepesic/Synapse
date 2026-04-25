@@ -1,4 +1,4 @@
-# Synapsis
+# Synapse
 
 Interactive call-graph explorer for Swift codebases. Map every function, every call, every dependency — then click any node to read the source, ask the AI what it does, or predict what breaks if you change it.
 
@@ -15,9 +15,9 @@ Interactive call-graph explorer for Swift codebases. Map every function, every c
 
 | Layer | Tech |
 |-------|------|
-| Frontend | React + Vite + JavaScript |
-| Graph viz | @xyflow/react |
-| Frontend state | Zustand + TanStack Query |
+| Frontend | React 19 + Vite 8 + JavaScript |
+| Graph viz | Custom SVG canvas + dagre layout |
+| Frontend state | Zustand |
 | Backend | FastAPI (Python 3.12) |
 | AST parsing | tree-sitter (Swift now, multi-language pluggable) |
 | LLM | Groq (Llama 3.3 70B) via OpenAI-compatible SDK |
@@ -29,19 +29,20 @@ Interactive call-graph explorer for Swift codebases. Map every function, every c
 ```
 backend/
   api/                    FastAPI app + endpoints
-  ir_compiler/            IR → graph, predict_impact, hotspots, dead_code
+  ir_compiler/            IR → graph, predict_impact, hotspots, dead_code, clustering
   llm/                    Groq LLM provider, SQLite cache, use cases
   parser/                 tree-sitter parsing (Swift, multi-language registry)
-  cached/                 Pre-built graph JSON (katana.graph.json)
-  scripts/                Prefill and utility scripts
+  cached/                 Pre-built katana.ir.json + katana.graph.json
+  scripts/                build_katana_graph, prefill_cache
+  data/katana/            Cloned katana-swift repo (for code snippets)
+  tests/                  Parser + IR compiler test suites
 frontend/
   src/
-    components/           GraphView, CodePanel, ImportDialog, NodeEditor, Layout
-    api/                  Backend fetch wrappers
-    store/                Zustand stores
-    hooks/                Caching, layout
-    types/                API type reference (JSDoc)
-    mocks/                Mock data for frontend-only dev
+    pages/                Landing, Workspace (main canvas + side panels), Home, Login
+    components/Layout/    Header, Footer
+    store/                Zustand stores (graphStore, projectStore)
+    data/                 Mock data for frontend-only dev
+    types/                API type reference (JSDoc) + endpoint constants
 ```
 
 ## Setup
@@ -107,7 +108,7 @@ See `.env.example` for the full list. Key ones:
 
 | Variable | Description |
 |---|---|
-| `LLM_PROVIDER` | LLM provider (`groq` default; `openai`, `anthropic`, etc. supported) |
+| `LLM_PROVIDER` | LLM provider (`groq`) |
 | `LLM_MODEL` | Model name (e.g. `llama-3.3-70b-versatile`) |
 | `LLM_API_KEY` | API key for the chosen provider |
 | `LLM_BASE_URL` | Base URL for OpenAI-compatible providers |
