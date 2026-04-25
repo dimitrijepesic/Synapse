@@ -180,6 +180,7 @@ class PythonParser(BaseParser):
             params=self._extract_params(node, source, is_staticmethod, is_classmethod, current_class),
             return_type=self._extract_return_type(node, source),
         )
+        fn.tags = [f"@{d}" for d in decorators]
         result.functions.append(fn)
 
         # walk body with this function as context

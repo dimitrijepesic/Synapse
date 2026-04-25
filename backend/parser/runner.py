@@ -38,6 +38,7 @@ def parse_repo(repo_path: str, repo_name: str = "", language: str = "swift") -> 
     merged = merge(results)
     _refine_call_kinds(merged)
     _resolve_implicit_self(merged)
+    _tag_http(merged)
     return _to_dict(merged)
 
 
@@ -96,6 +97,24 @@ def _resolve_implicit_self(result: ParseResult) -> None:
                     c.receiver = "self"
                     c.target = f"self.{c.target}"
 
+def _tag_http(result: ParseResult) -> None:
+    ROUTE_DECORATORS = {"route", "get", "post", "put", "delete", "patch", "api_view"}
+    HTTP_CALLERS = {"fetch", "axios", "get", "post", "put", "delete", "patch"}
+
+    for f in result.files:
+        for fn in f.functions:
+            # Python endpoints: @app.route, @router.get, etc.
+            for tag in fn.tags:
+                name = tag.lstrip("@").split(".")[-1].lower()
+                if name in ROUTE_DECORATORS:
+                    fn.tags.append("http:endpoint")
+                    break
+
+            # JS callers: fetch(), axios.post(), etc.
+            for c in fn.calls:
+                if c.method in HTTP_CALLERS and c.kind in ("call", "method"):
+                    fn.tags.append("http:client")
+                    break
 
 def parse_file(file_path: str, repo_name: str = "") -> dict:
     ext = Path(file_path).suffix
@@ -111,6 +130,7 @@ def parse_file(file_path: str, repo_name: str = "") -> dict:
     )
     _refine_call_kinds(result)
     _resolve_implicit_self(result)
+    _tag_http(result)
     return _to_dict(result)
 
 
