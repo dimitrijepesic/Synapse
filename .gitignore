@@ -35,6 +35,16 @@ frontend/dist/
 # Temp repos (imported codebases)
 tmp_repos/
 uploads/
+backend/data/
+
+# Cache & artifacts
+*.sqlite
+*.sqlite-journal
+backend/cached/
+
+# Logs
+*.log
+logs/
 
 # OS
 Thumbs.db
