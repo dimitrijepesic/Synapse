@@ -815,6 +815,7 @@ def build_call_graph(ir: dict) -> dict:
                 "is_override": _is_override(sig),
                 "protocol_witnesses": _compute_protocol_witnesses(fn, registry),
                 "complexity": _compute_complexity_proxy(fn),
+                "tags": fn.get("tags", []),
             }
 
             nodes.append(node)
@@ -860,6 +861,7 @@ def build_call_graph(ir: dict) -> dict:
             "is_override": False,
             "protocol_witnesses": [],
             "complexity": {"param_count": 0, "call_count": 0, "line_span": None},
+            "tags": [],
         }
         nodes.append(node)
         qualified_to_ids.setdefault(qname, []).append(node_id)
@@ -1106,6 +1108,10 @@ def dead_code(graph: dict) -> list:
         # Public API entry points are by definition alive
         if n.get("access_level") in ("public", "open"):
             return False
+        # HTTP endpoints and clients are entry/exit points — alive by definition
+        tags = n.get("tags", [])
+        if "http:endpoint" in tags or "http:client" in tags:
+            return False
         return True
 
     candidates = {n["id"] for n in graph["nodes"] if _is_candidate(n)}
@@ -1173,9 +1179,9 @@ def _get_function_kind(fn: dict, category: str, registry: "TypeRegistry") -> str
     container = fn.get("container")
 
     # 1. Language-level lifecycle — highest priority, unambiguous
-    if name == "init":
+    if name in ("init", "__init__", "constructor"):
         return "constructor"
-    if name == "deinit":
+    if name in ("deinit", "__del__"):
         return "destructor"
 
     # 2. Test-file functions, sub-classified so a setUp in a test file
@@ -1193,9 +1199,13 @@ def _get_function_kind(fn: dict, category: str, registry: "TypeRegistry") -> str
     if container and registry.is_protocol(container):
         return "protocol_default"
 
-    # 4. Static / class methods — inferred from the signature text because
-    #    the parser doesn't yet expose a dedicated flag for this
-    if "static func" in sig or "class func" in sig:
+    # 4. Static / class methods — inferred from signature text or tags
+    if "static func" in sig or "class func" in sig or "static " in sig:
+        return "static_method"
+
+    # Python: @staticmethod / @classmethod stored in tags
+    tags = fn.get("tags", [])
+    if "@staticmethod" in tags or "@classmethod" in tags:
         return "static_method"
 
     # 5. Regular instance method
@@ -1217,10 +1227,10 @@ if __name__ == "__main__":
     import sys
 
     ir_path = sys.argv[1] if len(sys.argv) > 1 else os.path.join(
-        os.path.dirname(__file__), "..", "tests", "parser_tests", "test3_output.json"
+        os.path.dirname(__file__), "..", "tests", "parser_tests", "output.json"
     )
     out_path = sys.argv[2] if len(sys.argv) > 2 else os.path.join(
-        os.path.dirname(__file__), "..", "tests", "ir_compiler_tests", "external_test3_output.json"
+        os.path.dirname(__file__), "..", "tests", "ir_compiler_tests", "bonus_output.json"
     )
 
     with open(ir_path) as f:
