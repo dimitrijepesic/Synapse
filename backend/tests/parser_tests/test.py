@@ -4,7 +4,7 @@ sys.path.insert(0, "/home/nenad/work/hackupc/hackupc/backend")
 import json
 from parser import parse_repo
 
-result = parse_repo("katana-swift", repo_name="BendingSpoons/katana-swift")
+result = parse_repo("hackupc", repo_name="HACKUPC")
 
 with open("output.json", "w") as f:
     json.dump(result, f, indent=2)

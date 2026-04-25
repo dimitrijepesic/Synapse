@@ -181,6 +181,7 @@ class PythonParser(BaseParser):
             return_type=self._extract_return_type(node, source),
             decorators=decorators,
         )
+        fn.tags = [f"@{d}" for d in decorators]
         result.functions.append(fn)
 
         # walk body with this function as context

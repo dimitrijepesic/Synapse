@@ -14,6 +14,8 @@ class FunctionCall:
     receiver: str | None = None
     method: str = ""
     kind: str = "call"  # "call" | "method" | "initializer"
+    condition: str | None = None
+    branch_kind: str | None = None  # "if_then" | "if_else" | "guard_else" | "switch_case" | None
 
 @dataclass
 class FunctionInfo:
@@ -26,7 +28,7 @@ class FunctionInfo:
     container: str | None = None
     params: list[Param] = field(default_factory=list)
     return_type: str | None = None
-    decorators: list[str] = field(default_factory=list)
+    tags: list[str] = field(default_factory=list)
 
 @dataclass
 class TypeInfo:

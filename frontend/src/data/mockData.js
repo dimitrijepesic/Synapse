@@ -151,6 +151,9 @@ const rawEdges = graphJson.edges.map((e, i) => ({
   sourceHandle: 'output',
   targetHandle: 'input',
   weight: e.weight,
+  condition: e.condition || null,
+  branch_kind: e.branch_kind || null,
+  synthetic: e.synthetic || false,
 }));
 
 const positions = computeLayout(rawNodes, rawEdges);
