@@ -6,9 +6,9 @@ Sidebar that shows source code and AI summary for the selected node.
 
 ## Files to create
 
-- `CodePanel.tsx` — sidebar container: source code viewer + AI summary below
-- `AISummary.tsx` — displays AI-generated summary with loading state
-- `index.ts` — barrel export
+- `CodePanel.jsx` — sidebar container: source code viewer + AI summary below
+- `AISummary.jsx` — displays AI-generated summary with loading state
+- `index.js` — barrel export
 
 ## Behavior
 

@@ -6,6 +6,6 @@ App shell components — header bar and sidebar wrapper.
 
 ## Files to create
 
-- `Header.tsx` — top bar: app name, current project info, import button
-- `Sidebar.tsx` — collapsible sidebar wrapping CodePanel and NodeEditor
-- `index.ts` — barrel export
+- `Header.jsx` — top bar: app name, current project info, import button
+- `Sidebar.jsx` — collapsible sidebar wrapping CodePanel and NodeEditor
+- `index.js` — barrel export

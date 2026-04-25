@@ -6,10 +6,10 @@ The core interactive call-graph canvas built on @xyflow/react (react-flow).
 
 ## Files to create
 
-- `GraphView.tsx` — main react-flow canvas with zoom, pan, minimap
-- `FunctionNode.tsx` — custom node: shows function name, file, language badge
-- `ConditionEdge.tsx` — custom edge: labeled with the condition (if/else/for/etc.)
-- `index.ts` — barrel export
+- `GraphView.jsx` — main react-flow canvas with zoom, pan, minimap
+- `FunctionNode.jsx` — custom node: shows function name, file, language badge
+- `ConditionEdge.jsx` — custom edge: labeled with the condition (if/else/for/etc.)
+- `index.js` — barrel export
 
 ## Behavior
 

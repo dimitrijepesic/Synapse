@@ -6,10 +6,10 @@ Modal for importing a codebase — either from GitHub URL or local file upload.
 
 ## Files to create
 
-- `ImportDialog.tsx` — modal wrapper with tab toggle between GitHub / Local
-- `GitHubImport.tsx` — URL input + clone button
-- `LocalImport.tsx` — drag-and-drop / file picker for local folders
-- `index.ts` — barrel export
+- `ImportDialog.jsx` — modal wrapper with tab toggle between GitHub / Local
+- `GitHubImport.jsx` — URL input + clone button
+- `LocalImport.jsx` — drag-and-drop / file picker for local folders
+- `index.js` — barrel export
 
 ## Behavior
 

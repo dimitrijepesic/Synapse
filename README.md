@@ -15,7 +15,7 @@ Interactive AST-based call-graph explorer. Import a codebase, see which function
 
 | Layer | Tech |
 |-------|------|
-| Frontend | React + Vite + TypeScript |
+| Frontend | React + Vite + JavaScript |
 | Graph Viz | @xyflow/react |
 | State | Zustand + TanStack Query |
 | Backend | Flask (Python) |
@@ -37,7 +37,7 @@ frontend/         React app
     api/          Backend fetch wrappers
     store/        Zustand stores
     hooks/        Caching, layout
-    types/        TypeScript API types
+    types/        API type reference (JSDoc)
     mocks/        Mock data for frontend-only dev
 shared/           API contract (source of truth for both sides)
 ```

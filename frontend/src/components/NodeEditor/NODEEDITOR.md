@@ -6,10 +6,10 @@ Panel for adding new nodes to the call graph — manually or via AI description.
 
 ## Files to create
 
-- `NodeEditor.tsx` — main panel with toggle between manual / AI mode
-- `ConditionForm.tsx` — manual: specify function code, predecessor, successor, conditions
-- `AIInsert.tsx` — AI: natural language description of what to insert and where
-- `index.ts` — barrel export
+- `NodeEditor.jsx` — main panel with toggle between manual / AI mode
+- `ConditionForm.jsx` — manual: specify function code, predecessor, successor, conditions
+- `AIInsert.jsx` — AI: natural language description of what to insert and where
+- `index.js` — barrel export
 
 ## Behavior
 

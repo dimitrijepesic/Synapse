@@ -1,10 +1,10 @@
 # Types
 
-TypeScript interfaces mirroring the backend models. This is the frontend half of the shared contract.
+JSDoc type definitions and reference constants mirroring the backend models. This is the frontend half of the shared contract.
 
 ## Files to create
 
-- `api.ts` — `GraphNode`, `GraphEdge`, `CallGraph`, API request/response types
+- `api.js` — JSDoc `@typedef` for `GraphNode`, `GraphEdge`, `CallGraph`, API request/response shapes
 
 ## Rules
 
