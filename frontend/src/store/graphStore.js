@@ -4,6 +4,8 @@ import { defaultNodes, defaultEdges } from '../data/mockData';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
+const COMPACT_NODE_WIDTH = 200;
+const COMPACT_NODE_HEIGHT = 150;
 const LAYOUT_ANIM_MS = 500;
 const CLUSTER_ANIM_MS = 380;
 
@@ -169,7 +171,7 @@ function _tweenLayout({ nodeTargets, clusterTargets, onComplete }, set, get) {
 }
 
 const CLUSTER_NODE_WIDTH = 240;
-const CLUSTER_NODE_HEIGHT = 140;
+const CLUSTER_NODE_HEIGHT = 180;
 
 const useGraphStore = create((set, get) => ({
   nodes: defaultNodes,
@@ -294,6 +296,8 @@ const useGraphStore = create((set, get) => ({
         lineEnd: n.line_end,
         isSelfRecursive: selfLoops.has(n.id),
         isMutualRecursive: mutualRec.has(n.id),
+        isHttpEndpoint: !!n.is_http_endpoint,
+        decorators: n.decorators || [],
       }));
 
       const rawEdges = graph.edges.map((e, i) => ({
@@ -498,8 +502,8 @@ const useGraphStore = create((set, get) => ({
         const memberCount = c.node_ids.length;
         const cols = Math.max(1, Math.min(4, Math.ceil(Math.sqrt(memberCount))));
         const rows = Math.ceil(memberCount / cols);
-        w = Math.max(CLUSTER_NODE_WIDTH, cols * (NODE_WIDTH + 24) + 48);
-        h = Math.max(CLUSTER_NODE_HEIGHT, rows * (NODE_HEIGHT + 24) + 80);
+        w = Math.max(CLUSTER_NODE_WIDTH, cols * (COMPACT_NODE_WIDTH + 24) + 48);
+        h = Math.max(CLUSTER_NODE_HEIGHT, rows * (COMPACT_NODE_HEIGHT + 24) + 80);
       }
       g.setNode(c.id, { width: w, height: h });
     });
@@ -530,13 +534,13 @@ const useGraphStore = create((set, get) => ({
           const col = i % cols;
           const row = Math.floor(i / cols);
           nodeTargets[nid] = {
-            x: cx + padX + col * (NODE_WIDTH + gapX),
-            y: cy + padTop + row * (NODE_HEIGHT + gapY),
+            x: cx + padX + col * (COMPACT_NODE_WIDTH + gapX),
+            y: cy + padTop + row * (COMPACT_NODE_HEIGHT + gapY),
           };
         });
       } else {
-        const centerX = cx + w / 2 - NODE_WIDTH / 2;
-        const centerY = cy + h / 2 - NODE_HEIGHT / 2;
+        const centerX = cx + w / 2 - COMPACT_NODE_WIDTH / 2;
+        const centerY = cy + h / 2 - COMPACT_NODE_HEIGHT / 2;
         memberIds.forEach((nid) => {
           nodeTargets[nid] = { x: centerX, y: centerY };
         });

@@ -17,7 +17,7 @@ const NODE_HEIGHT = 120;
 const isConstructor = (n) =>
   n.name === 'init' || /\binit\b/.test(n.signature || '') || n.icon === 'add_circle';
 const isDeadNode = (n) =>
-  (n.inDegree ?? 0) === 0 && n.category !== 'test' && !isConstructor(n);
+  (n.inDegree ?? 0) === 0 && n.category !== 'test' && !isConstructor(n) && !n.isHttpEndpoint;
 const isEntryNode = (n) => (n.inDegree ?? 0) === 0;
 const isLeafNode = (n) => (n.outDegree ?? 0) === 0;
 
