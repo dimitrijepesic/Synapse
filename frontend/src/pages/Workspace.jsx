@@ -122,6 +122,71 @@ export default function Workspace() {
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
+  // Codebase overview state
+  const [overview, setOverview] = useState(null);
+  const [overviewLoading, setOverviewLoading] = useState(false);
+  const [overviewError, setOverviewError] = useState(null);
+  const [overviewOpen, setOverviewOpen] = useState(false);
+
+  // Hotspots state
+  const [hotspotsData, setHotspotsData] = useState(null);
+  const [hotspotsLoading, setHotspotsLoading] = useState(false);
+
+  // Dead code state
+  const [deadCodeData, setDeadCodeData] = useState(null);
+  const [deadCodeLoading, setDeadCodeLoading] = useState(false);
+
+  const handleOverview = useCallback(async () => {
+    setOverviewLoading(true);
+    setOverviewError(null);
+    setOverviewOpen(true);
+    try {
+      const res = await fetch(`${API_BASE}${ENDPOINTS.llmOverview}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        throw new Error(`Overview failed: ${res.status}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);
+      }
+      const data = await res.json();
+      setOverview(data.overview || '(empty response)');
+    } catch (err) {
+      setOverviewError(err.message || 'Failed to get overview');
+    } finally {
+      setOverviewLoading(false);
+    }
+  }, []);
+
+  const handleHotspots = useCallback(async () => {
+    setHotspotsLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}${ENDPOINTS.hotspots}`);
+      if (!res.ok) throw new Error(`Hotspots failed: ${res.status}`);
+      const data = await res.json();
+      setHotspotsData(data.results || []);
+    } catch (err) {
+      setHotspotsData(null);
+    } finally {
+      setHotspotsLoading(false);
+    }
+  }, []);
+
+  const handleDeadCode = useCallback(async () => {
+    setDeadCodeLoading(true);
+    try {
+      const res = await fetch(`${API_BASE}${ENDPOINTS.deadCode}`);
+      if (!res.ok) throw new Error(`Dead code failed: ${res.status}`);
+      const data = await res.json();
+      setDeadCodeData(data.results || []);
+    } catch (err) {
+      setDeadCodeData(null);
+    } finally {
+      setDeadCodeLoading(false);
+    }
+  }, []);
+
   // Direct neighbors (callers + callees) of the selected node — used for highlighting
   const neighborIds = (() => {
     if (!selectedNodeId) return null;
@@ -328,6 +393,39 @@ export default function Workspace() {
               <span className="material-symbols-outlined text-[16px]">auto_fix_high</span>
               <span className="font-label-sm">Auto Layout</span>
             </button>
+            <button
+              onClick={handleOverview}
+              disabled={overviewLoading}
+              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
+              title="AI codebase overview"
+            >
+              <span className={`material-symbols-outlined text-[16px] ${overviewLoading ? 'animate-spin' : ''}`}>
+                {overviewLoading ? 'progress_activity' : 'summarize'}
+              </span>
+              <span className="font-label-sm">Overview</span>
+            </button>
+            <button
+              onClick={handleHotspots}
+              disabled={hotspotsLoading}
+              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
+              title="Find hotspot functions"
+            >
+              <span className={`material-symbols-outlined text-[16px] ${hotspotsLoading ? 'animate-spin' : ''}`}>
+                {hotspotsLoading ? 'progress_activity' : 'local_fire_department'}
+              </span>
+              <span className="font-label-sm">Hotspots</span>
+            </button>
+            <button
+              onClick={handleDeadCode}
+              disabled={deadCodeLoading}
+              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
+              title="Find dead code"
+            >
+              <span className={`material-symbols-outlined text-[16px] ${deadCodeLoading ? 'animate-spin' : ''}`}>
+                {deadCodeLoading ? 'progress_activity' : 'delete_sweep'}
+              </span>
+              <span className="font-label-sm">Dead Code</span>
+            </button>
             <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
               {CANVAS_FILTERS.map((f) => {
                 const on = classFilter.has(f.id);
@@ -530,6 +628,111 @@ export default function Workspace() {
                 closeNodeEditor();
               }}
             />
+          )}
+
+          {/* Overview overlay */}
+          {overviewOpen && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setOverviewOpen(false)}>
+              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-primary">summarize</span>
+                    <h3 className="font-label-md text-gray-900 text-base">Codebase Overview</h3>
+                  </div>
+                  <button onClick={() => setOverviewOpen(false)} className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100">
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                </div>
+                {overviewLoading && (
+                  <div className="flex items-center gap-2 text-gray-500">
+                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                    <span className="text-sm">Generating overview…</span>
+                  </div>
+                )}
+                {overviewError && (
+                  <p className="text-sm text-rose-600">{overviewError}</p>
+                )}
+                {overview && (
+                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{overview}</p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Hotspots overlay */}
+          {hotspotsData && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setHotspotsData(null)}>
+              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-orange-500">local_fire_department</span>
+                    <h3 className="font-label-md text-gray-900 text-base">Hotspot Functions</h3>
+                  </div>
+                  <button onClick={() => setHotspotsData(null)} className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100">
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                </div>
+                {hotspotsData.length === 0 ? (
+                  <p className="text-sm text-gray-500">No hotspots found.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {hotspotsData.map((h, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { handleFunctionSelect(h.id); setHotspotsData(null); }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100 text-left transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{h.qualified_name || h.name}</p>
+                          <p className="text-[11px] text-gray-400 truncate">{h.file}:{h.line}</p>
+                        </div>
+                        <span className="text-[11px] text-orange-600 shrink-0 ml-2">
+                          {h.in_degree} callers
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* Dead code overlay */}
+          {deadCodeData && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setDeadCodeData(null)}>
+              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between mb-4">
+                  <div className="flex items-center gap-2">
+                    <span className="material-symbols-outlined text-[20px] text-rose-500">delete_sweep</span>
+                    <h3 className="font-label-md text-gray-900 text-base">Dead Code</h3>
+                  </div>
+                  <button onClick={() => setDeadCodeData(null)} className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100">
+                    <span className="material-symbols-outlined text-[18px]">close</span>
+                  </button>
+                </div>
+                {deadCodeData.length === 0 ? (
+                  <p className="text-sm text-gray-500">No dead code found.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {deadCodeData.map((d, i) => (
+                      <button
+                        key={i}
+                        onClick={() => { handleFunctionSelect(d.id); setDeadCodeData(null); }}
+                        className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100 text-left transition-colors"
+                      >
+                        <div className="min-w-0">
+                          <p className="text-sm text-gray-800 truncate">{d.qualified_name || d.name}</p>
+                          <p className="text-[11px] text-gray-400 truncate">{d.file}:{d.line}</p>
+                        </div>
+                        <span className="text-[10px] text-rose-500 shrink-0 ml-2 bg-rose-50 px-1.5 py-0.5 rounded">
+                          unreachable
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
           )}
         </main>
       </div>
@@ -1003,14 +1206,23 @@ function CodePanel({ node, open, onClose }) {
   const [summary, setSummary] = useState(null);
   const [summaryLoading, setSummaryLoading] = useState(false);
   const [summaryError, setSummaryError] = useState(null);
+  // Impact analysis state
+  const [impact, setImpact] = useState(null);
+  const [impactNarrative, setImpactNarrative] = useState(null);
+  const [impactLoading, setImpactLoading] = useState(false);
+  const [impactError, setImpactError] = useState(null);
   const MIN_W = 280;
   const MAX_W = 700;
 
-  // Reset summary when the selected node changes
+  // Reset summary & impact when the selected node changes
   useEffect(() => {
     setSummary(null);
     setSummaryError(null);
     setSummaryLoading(false);
+    setImpact(null);
+    setImpactNarrative(null);
+    setImpactError(null);
+    setImpactLoading(false);
   }, [node?.id]);
 
   const handleSummarize = useCallback(async () => {
@@ -1023,13 +1235,55 @@ function CodePanel({ node, open, onClose }) {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ node_id: node.id }),
       });
-      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      if (!res.ok) {
+        const errBody = await res.text().catch(() => '');
+        throw new Error(`Request failed: ${res.status}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);
+      }
       const data = await res.json();
       setSummary(data.explanation || '(empty response)');
     } catch (err) {
       setSummaryError(err.message || 'Failed to summarize');
     } finally {
       setSummaryLoading(false);
+    }
+  }, [node?.id]);
+
+  const handleImpactAnalysis = useCallback(async () => {
+    if (!node?.id) return;
+    setImpactLoading(true);
+    setImpactError(null);
+    setImpact(null);
+    setImpactNarrative(null);
+    try {
+      // Step 1: get predicted impact
+      const impactRes = await fetch(`${API_BASE}${ENDPOINTS.predictImpact}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: node.id }),
+      });
+      if (!impactRes.ok) {
+        const errBody = await impactRes.text().catch(() => '');
+        throw new Error(`Impact request failed: ${impactRes.status}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);
+      }
+      const impactData = await impactRes.json();
+      setImpact(impactData);
+
+      // Step 2: get LLM narrative for the impact
+      const narrativeRes = await fetch(`${API_BASE}${ENDPOINTS.llmImpactNarrative}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: node.id }),
+      });
+      if (!narrativeRes.ok) {
+        const errBody = await narrativeRes.text().catch(() => '');
+        throw new Error(`Narrative request failed: ${narrativeRes.status}${errBody ? ' — ' + errBody.slice(0, 200) : ''}`);
+      }
+      const narrativeData = await narrativeRes.json();
+      setImpactNarrative(narrativeData.narrative || '(empty response)');
+    } catch (err) {
+      setImpactError(err.message || 'Failed to analyze impact');
+    } finally {
+      setImpactLoading(false);
     }
   }, [node?.id]);
 
@@ -1088,16 +1342,28 @@ function CodePanel({ node, open, onClose }) {
       <div className="border-b border-gray-200 bg-white flex flex-col shrink-0">
         <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
           <span className="font-label-sm text-gray-500 uppercase tracking-wider text-[10px]">Node Analysis</span>
-          <button
-            onClick={handleSummarize}
-            disabled={!node || summaryLoading}
-            className="flex items-center gap-1 text-[10px] font-label-sm text-primary hover:text-gray-900 transition-colors bg-primary/10 px-2 py-1 rounded border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <span className={`material-symbols-outlined text-[12px] ${summaryLoading ? 'animate-spin' : ''}`}>
-              {summaryLoading ? 'progress_activity' : 'auto_awesome'}
-            </span>
-            {summaryLoading ? 'Summarizing…' : 'Summarize'}
-          </button>
+          <div className="flex gap-1.5">
+            <button
+              onClick={handleSummarize}
+              disabled={!node || summaryLoading}
+              className="flex items-center gap-1 text-[10px] font-label-sm text-primary hover:text-gray-900 transition-colors bg-primary/10 px-2 py-1 rounded border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className={`material-symbols-outlined text-[12px] ${summaryLoading ? 'animate-spin' : ''}`}>
+                {summaryLoading ? 'progress_activity' : 'auto_awesome'}
+              </span>
+              {summaryLoading ? 'Summarizing…' : 'Summarize'}
+            </button>
+            <button
+              onClick={handleImpactAnalysis}
+              disabled={!node || impactLoading}
+              className="flex items-center gap-1 text-[10px] font-label-sm text-amber-700 hover:text-gray-900 transition-colors bg-amber-50 px-2 py-1 rounded border border-amber-200 disabled:opacity-50 disabled:cursor-not-allowed"
+            >
+              <span className={`material-symbols-outlined text-[12px] ${impactLoading ? 'animate-spin' : ''}`}>
+                {impactLoading ? 'progress_activity' : 'bolt'}
+              </span>
+              {impactLoading ? 'Analyzing…' : 'Impact'}
+            </button>
+          </div>
         </div>
         <div className="p-4">
           {node && node.analysis ? (
@@ -1113,6 +1379,40 @@ function CodePanel({ node, open, onClose }) {
                     <span className="font-label-sm text-[10px] text-primary uppercase tracking-wider">AI Summary</span>
                   </div>
                   <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap">{summary}</p>
+                </div>
+              )}
+              {impactError && (
+                <p className="font-body-md text-sm text-rose-600 mb-3">{impactError}</p>
+              )}
+              {(impact || impactNarrative) && (
+                <div className="mb-3 px-3 py-2 rounded bg-amber-50 border border-amber-200">
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <span className="material-symbols-outlined text-[12px] text-amber-600">bolt</span>
+                    <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">Impact Analysis</span>
+                  </div>
+                  {impactNarrative && (
+                    <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap mb-2">{impactNarrative}</p>
+                  )}
+                  {impact && impact.affected && impact.affected.length > 0 && (
+                    <div className="mt-1.5">
+                      <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">
+                        Affected nodes ({impact.affected.length})
+                      </span>
+                      <div className="mt-1 space-y-0.5 max-h-32 overflow-y-auto">
+                        {impact.affected.slice(0, 15).map((a, i) => (
+                          <div key={i} className="flex items-center justify-between text-[11px] text-gray-600 px-1 py-0.5 rounded hover:bg-amber-100/50">
+                            <span className="truncate flex-1">{a.id.split(':').pop() || a.id}</span>
+                            <span className="text-[10px] text-amber-600 ml-2 shrink-0">
+                              risk {(a.risk_score * 100).toFixed(0)}%
+                            </span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {impact && impact.affected && impact.affected.length === 0 && (
+                    <p className="text-[11px] text-gray-500">No downstream nodes affected.</p>
+                  )}
                 </div>
               )}
               {node.signature && (
