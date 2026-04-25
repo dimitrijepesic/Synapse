@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Layout';
 import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
@@ -10,19 +10,14 @@ const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
 
 // --- Reachability classification ---
-// in_degree:0 + non-test => suspected unreachable code. Constructors (Swift
-// `init`, etc.) are excluded — call sites like `Foo(x)` are usually not linked
-// to the init node by the parser, so they'd produce false-positive DEAD flags.
-const isConstructor = (n) =>
-  n.name === 'init' || /\binit\b/.test(n.signature || '') || n.icon === 'add_circle';
-const isDeadNode = (n) =>
-  (n.inDegree ?? 0) === 0 && n.category !== 'test' && !isConstructor(n);
+// "Unused" = isolated nodes with zero callers AND zero callees (no edges at all).
+const isUnusedNode = (n) => (n.inDegree ?? 0) === 0 && (n.outDegree ?? 0) === 0;
 const isEntryNode = (n) => (n.inDegree ?? 0) === 0;
 const isLeafNode = (n) => (n.outDegree ?? 0) === 0;
 
 const CANVAS_FILTERS = [
-  { id: 'dead', label: 'Dead', match: isDeadNode, dotClass: 'bg-rose-500' },
-  { id: 'entry', label: 'Entry', match: isEntryNode, dotClass: 'bg-indigo-500' },
+  { id: 'unused', label: 'Unused', match: isUnusedNode, dotClass: 'bg-rose-500' },
+  { id: 'entry', label: 'Entry', match: isEntryNode, dotClass: 'bg-deep-olive' },
   { id: 'leaf', label: 'Leaf', match: isLeafNode, dotClass: 'bg-amber-500' },
 ];
 
@@ -202,7 +197,7 @@ function ConditionLabel({ from, to, edge }) {
 // --- Main Control Flow page ---
 
 export default function ControlFlow() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, viewCameras, setViewCamera } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -317,14 +312,20 @@ export default function ControlFlow() {
     return false;
   }, [classFilter]);
 
-  // --- Zoom / Pan state ---
+  // --- Zoom / Pan state (persisted per view in graphStore.viewCameras) ---
   const canvasRef = useRef(null);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const initialCam = viewCameras['control-flow'];
+  const [zoom, setZoom] = useState(initialCam?.zoom ?? 1);
+  const [pan, setPan] = useState(initialCam?.pan ?? { x: 0, y: 0 });
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
   zoomRef.current = zoom;
   panRef.current = pan;
+
+  // Persist camera whenever it changes
+  useEffect(() => {
+    setViewCamera('control-flow', { zoom, pan });
+  }, [zoom, pan, setViewCamera]);
 
   // Track canvas dimensions reactively
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
@@ -448,7 +449,7 @@ export default function ControlFlow() {
       <div className="flex flex-col h-screen font-body-md text-body-md text-on-surface overflow-hidden items-center justify-center" style={{ backgroundColor: '#f9fafb' }}>
         <Header activePage="control-flow" />
         <div className="flex flex-col items-center gap-4 pt-20">
-          <span className="material-symbols-outlined text-[48px] text-indigo-600 animate-spin">progress_activity</span>
+          <span className="material-symbols-outlined text-[48px] text-deep-olive animate-spin">progress_activity</span>
           <p className="text-gray-600 text-lg">Loading graph...</p>
         </div>
       </div>
@@ -474,19 +475,29 @@ export default function ControlFlow() {
       <div className="flex flex-1 pt-14 sm:pt-16 min-h-0 overflow-hidden">
         {/* Sidebar — icon rail + expandable explorer panel */}
         <SideNav
+          activePage="control-flow"
           project={project}
           activeTab={ui.activeSideTab}
           onTabChange={(tab) => setActiveSideTab(ui.activeSideTab === tab ? null : tab)}
-          onNewNode={openNodeEditor}
           nodes={nodes}
           selectedNodeId={selectedNodeId}
           selectedFile={selectedFile}
           onFileOpen={handleFileOpen}
           onFunctionSelect={handleFunctionSelect}
+          onOverview={handleOverview}
+          overviewLoading={overviewLoading}
+          onHotspots={handleHotspots}
+          hotspotsLoading={hotspotsLoading}
+          onDeadCode={handleDeadCode}
+          deadCodeLoading={deadCodeLoading}
+          classFilter={classFilter}
+          onToggleClassFilter={toggleClassFilter}
+          onClearClassFilter={() => setClassFilter(new Set())}
+          visibleNodes={nodes}
         />
 
         <main className="flex-1 flex min-h-0 relative">
-          {/* Top-left toolbar: Auto Layout + classification filters */}
+          {/* Top-left toolbar: Auto Layout + Packages */}
           <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-10 flex items-center gap-2">
             <button
               onClick={() => autoLayout()}
@@ -497,43 +508,10 @@ export default function ControlFlow() {
               <span className="font-label-sm">Auto Layout</span>
             </button>
             <button
-              onClick={handleOverview}
-              disabled={overviewLoading}
-              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
-              title="AI codebase overview"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${overviewLoading ? 'animate-spin' : ''}`}>
-                {overviewLoading ? 'progress_activity' : 'summarize'}
-              </span>
-              <span className="font-label-sm">Overview</span>
-            </button>
-            <button
-              onClick={handleHotspots}
-              disabled={hotspotsLoading}
-              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
-              title="Find hotspot functions"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${hotspotsLoading ? 'animate-spin' : ''}`}>
-                {hotspotsLoading ? 'progress_activity' : 'local_fire_department'}
-              </span>
-              <span className="font-label-sm">Hotspots</span>
-            </button>
-            <button
-              onClick={handleDeadCode}
-              disabled={deadCodeLoading}
-              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
-              title="Find dead code"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${deadCodeLoading ? 'animate-spin' : ''}`}>
-                {deadCodeLoading ? 'progress_activity' : 'delete_sweep'}
-              </span>
-              <span className="font-label-sm">Dead Code</span>
-            </button>
-            <button
               onClick={toggleClusterView}
               className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
                 clusterView
-                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
+                  ? 'bg-deep-olive text-white border-deep-olive hover:opacity-90 shadow-sm'
                   : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
               }`}
               title={clusterView ? 'Switch to flat view' : 'Switch to package view'}
@@ -546,37 +524,6 @@ export default function ControlFlow() {
               </span>
               <span className="font-label-sm">{clusterView ? 'Packaged' : 'Packages'}</span>
             </button>
-            <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
-              {CANVAS_FILTERS.map((f) => {
-                const on = classFilter.has(f.id);
-                const count = nodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => toggleClassFilter(f.id)}
-                    title={`${f.label}: ${count} node${count === 1 ? '' : 's'}`}
-                    className={`text-[11px] px-2 py-0.5 rounded flex items-center gap-1.5 border transition-colors ${
-                      on
-                        ? 'bg-gray-900 text-white border-gray-900'
-                        : 'bg-white/70 text-gray-600 border-transparent hover:text-gray-900'
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${f.dotClass}`} />
-                    <span className="font-label-sm">{f.label}</span>
-                    <span className={`text-[10px] ${on ? 'text-white/70' : 'text-gray-400'}`}>{count}</span>
-                  </button>
-                );
-              })}
-              {classFilter.size > 0 && (
-                <button
-                  onClick={() => setClassFilter(new Set())}
-                  className="text-[10px] px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-900"
-                  title="Clear classification filter"
-                >
-                  clear
-                </button>
-              )}
-            </div>
             <div className="glass-panel rounded-lg px-2 py-1 flex items-center gap-2" title="Branch kinds">
               {Object.entries(BRANCH_STYLES).map(([kind, s]) => (
                 <span key={kind} className="flex items-center gap-1 text-[11px] text-gray-600">
@@ -699,6 +646,7 @@ export default function ControlFlow() {
                         isDimmed={dimByNeighbor || dimByFilter}
                         edges={edges}
                         onSelect={() => selectNode(node.id)}
+                        onOpenCode={() => handleFunctionSelect(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
                       />
@@ -747,6 +695,7 @@ export default function ControlFlow() {
                         isDimmed={dimByNeighbor || dimByFilter}
                         edges={edges}
                         onSelect={() => selectNode(node.id)}
+                        onOpenCode={() => handleFunctionSelect(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
                       />
@@ -974,74 +923,179 @@ export default function ControlFlow() {
 
 // --- Side Navigation ---
 
-function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNodeId, selectedFile, onFileOpen, onFunctionSelect }) {
+function SideNav({
+  activePage,
+  project,
+  activeTab,
+  onTabChange,
+  nodes,
+  selectedNodeId,
+  selectedFile,
+  onFileOpen,
+  onFunctionSelect,
+  onOverview,
+  overviewLoading,
+  onHotspots,
+  hotspotsLoading,
+  onDeadCode,
+  deadCodeLoading,
+  classFilter,
+  onToggleClassFilter,
+  onClearClassFilter,
+  visibleNodes,
+}) {
   const tabs = [
     { id: 'explorer', icon: 'folder_open', label: 'Explorer' },
     { id: 'functions', icon: 'terminal', label: 'Functions', filled: true },
   ];
 
+  const navLinks = [
+    { to: '/workspace/call-graph', icon: 'hub', label: 'Call Graph', page: 'call-graph' },
+    { to: '/workspace/control-flow', icon: 'fork_right', label: 'Control Flow', page: 'control-flow' },
+  ];
+
   const panelOpen = activeTab === 'explorer' || activeTab === 'functions';
   const panelTitle = activeTab === 'functions' ? 'Functions' : 'Explorer';
+
+  const railBtnBase =
+    'w-full flex flex-col items-center py-1.5 sm:py-2 md:py-2.5 rounded transition-all duration-100 ease-in group';
+  const railIcon =
+    'material-symbols-outlined text-[18px] sm:text-[20px] md:text-[22px] md:mb-0.5 group-hover:scale-110 transition-transform';
+  const railLabel =
+    'hidden md:block font-grotesk uppercase text-[9px] tracking-widest text-center w-full truncate px-1';
 
   return (
     <div className="flex min-h-0 shrink-0 z-40">
       {/* Icon rail */}
-      <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-4 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
-        {/* Tab buttons — top */}
-        <div className="flex flex-col items-center w-full gap-1 md:gap-2 px-0.5 sm:px-1 md:px-2 flex-1">
+      <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-3 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)] overflow-y-auto">
+        <div className="flex flex-col items-center w-full gap-1 px-0.5 sm:px-1 md:px-2 flex-1">
+          {/* Page navigation */}
+          {navLinks.map((nl) => (
+            <Link
+              key={nl.page}
+              to={nl.to}
+              className={`${railBtnBase} ${
+                activePage === nl.page
+                  ? 'text-deep-olive bg-soft-sage/30'
+                  : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
+              }`}
+              title={nl.label}
+            >
+              <span className={railIcon}>{nl.icon}</span>
+              <span className={railLabel}>{nl.label}</span>
+            </Link>
+          ))}
+
+          <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* Explorer / Functions tabs */}
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded transition-all duration-100 ease-in group ${
+              className={`${railBtnBase} ${
                 activeTab === tab.id
-                  ? 'text-indigo-600 bg-indigo-50'
-                  : 'text-gray-400 hover:bg-indigo-50 hover:text-indigo-600'
+                  ? 'text-deep-olive bg-soft-sage/30'
+                  : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
               }`}
               title={tab.label}
             >
               <span
-                className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] md:mb-1 group-hover:scale-110 transition-transform"
+                className={railIcon}
                 style={activeTab === tab.id && tab.filled ? { fontVariationSettings: "'FILL' 1" } : undefined}
               >
                 {tab.icon}
               </span>
-              <span className="hidden md:block font-grotesk uppercase text-[10px] tracking-widest text-center w-full truncate px-1">
-                {tab.label}
-              </span>
+              <span className={railLabel}>{tab.label}</span>
             </button>
           ))}
+
+          <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* AI / analysis actions */}
           <button
-            onClick={onNewNode}
-            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mt-2 md:mt-4 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-sm"
-            title="New Node"
+            onClick={onOverview}
+            disabled={overviewLoading}
+            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
+            title="AI codebase overview"
           >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px] md:text-[24px]">add</span>
+            <span className={`${railIcon} ${overviewLoading ? 'animate-spin' : ''}`}>
+              {overviewLoading ? 'progress_activity' : 'summarize'}
+            </span>
+            <span className={railLabel}>Overview</span>
           </button>
+          <button
+            onClick={onHotspots}
+            disabled={hotspotsLoading}
+            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
+            title="Find hotspot functions"
+          >
+            <span className={`${railIcon} ${hotspotsLoading ? 'animate-spin' : ''}`}>
+              {hotspotsLoading ? 'progress_activity' : 'local_fire_department'}
+            </span>
+            <span className={railLabel}>Hotspots</span>
+          </button>
+          <button
+            onClick={onDeadCode}
+            disabled={deadCodeLoading}
+            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
+            title="Find dead code"
+          >
+            <span className={`${railIcon} ${deadCodeLoading ? 'animate-spin' : ''}`}>
+              {deadCodeLoading ? 'progress_activity' : 'delete_sweep'}
+            </span>
+            <span className={railLabel}>Dead Code</span>
+          </button>
+
+          <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* Classification chips: Unused / Entry / Leaf */}
+          <div className="w-full flex flex-col items-stretch gap-1 mt-1 px-0.5">
+            {CANVAS_FILTERS.map((f) => {
+              const on = classFilter.has(f.id);
+              const count = visibleNodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => onToggleClassFilter(f.id)}
+                  title={`${f.label}: ${count} node${count === 1 ? '' : 's'}`}
+                  className={`text-[10px] px-1.5 py-1 rounded flex items-center justify-center gap-1 border transition-colors ${
+                    on
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white/70 text-gray-600 border-gray-200 hover:text-gray-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${f.dotClass}`} />
+                  <span className="font-label-sm hidden md:inline">{f.label}</span>
+                  <span className={`text-[9px] ${on ? 'text-white/70' : 'text-gray-400'}`}>{count}</span>
+                </button>
+              );
+            })}
+            {classFilter.size > 0 && (
+              <button
+                onClick={onClearClassFilter}
+                className="text-[9px] py-0.5 rounded text-gray-400 hover:text-gray-900"
+                title="Clear classification filter"
+              >
+                clear
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Bottom — settings, help, project */}
-        <div className="flex flex-col items-center w-full gap-1 md:gap-2 px-0.5 sm:px-1 md:px-2 mt-auto">
-          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-100 ease-in group" title="Settings">
-            <span className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] group-hover:scale-110 transition-transform">settings</span>
-          </button>
-          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-100 ease-in group" title="Help">
-            <span className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] group-hover:scale-110 transition-transform">help_outline</span>
-          </button>
-          {/* Project badge */}
-          <div className="flex flex-col items-center w-full mt-2 md:mt-3 pt-2 md:pt-3 border-t border-gray-200">
-            <div className="w-7 sm:w-8 md:w-10 h-7 sm:h-8 md:h-10 rounded bg-indigo-50 flex items-center justify-center border border-indigo-200 mb-1">
-              <span className="text-xs sm:text-sm md:text-lg font-black text-indigo-600">
-                {project.name.charAt(0).toLowerCase()}
-              </span>
-            </div>
-            <div className="hidden md:block text-[9px] font-grotesk uppercase tracking-widest text-gray-900 text-center w-full truncate px-1" title={project.name}>
-              {project.name}
-            </div>
-            <div className="hidden md:block text-[8px] font-grotesk uppercase tracking-widest text-gray-400 mt-0.5">
-              {project.branch}
-            </div>
-          </div>
+        {/* Bottom — GitHub icon */}
+        <div className="flex flex-col items-center w-full px-0.5 sm:px-1 md:px-2 mt-auto pt-2 md:pt-3 border-t border-gray-200">
+          <a
+            href={project?.repoUrl || '#'}
+            target={project?.repoUrl ? '_blank' : undefined}
+            rel="noreferrer"
+            className="w-7 sm:w-8 md:w-10 h-7 sm:h-8 md:h-10 rounded flex items-center justify-center text-gray-700 hover:text-black hover:bg-gray-100 transition-colors"
+            title={project?.name ? `${project.name} on GitHub` : 'GitHub'}
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.73.5.75 5.48.75 11.75c0 4.97 3.22 9.18 7.69 10.66.56.1.77-.24.77-.54v-1.9c-3.13.68-3.79-1.34-3.79-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 1.72 2.63 1.22 3.27.93.1-.73.39-1.22.71-1.5-2.5-.28-5.13-1.25-5.13-5.57 0-1.23.44-2.24 1.16-3.03-.12-.29-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.16a10.7 10.7 0 0 1 5.65 0c2.15-1.46 3.1-1.16 3.1-1.16.61 1.55.23 2.69.11 2.98.72.79 1.16 1.8 1.16 3.03 0 4.34-2.64 5.29-5.15 5.56.4.35.76 1.04.76 2.1v3.11c0 .3.2.65.78.54 4.47-1.49 7.68-5.69 7.68-10.66C23.25 5.48 18.27.5 12 .5Z" />
+            </svg>
+          </a>
         </div>
       </nav>
 
@@ -1220,7 +1274,7 @@ function FunctionFileGroup({ file, containers, selectedNodeId, onSelect, default
         >
           expand_more
         </span>
-        <span className={`material-symbols-outlined text-[14px] shrink-0 ${isTestFile ? 'text-green-600' : 'text-indigo-500'}`}>
+        <span className={`material-symbols-outlined text-[14px] shrink-0 ${isTestFile ? 'text-green-600' : 'text-deep-olive'}`}>
           {isTestFile ? 'science' : 'description'}
         </span>
         <span className="truncate flex-1 text-[12px]" title={file}>{fileName}</span>
@@ -1294,7 +1348,7 @@ function FunctionRow({ node, active, onSelect }) {
       ref={ref}
       onClick={() => onSelect(node.id)}
       className={`w-full flex items-center gap-1.5 py-[4px] pl-12 pr-2 text-left transition-colors group ${
-        active ? 'bg-indigo-50 text-gray-900' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        active ? 'bg-soft-sage/30 text-gray-900' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
       }`}
     >
       <span className={`material-symbols-outlined text-[12px] shrink-0 ${active ? 'text-primary' : 'text-gray-400'}`}>
@@ -1428,7 +1482,7 @@ function ClusterCard({ cluster, position, isExpanded, onToggle }) {
 
 // --- Draggable Node Card ---
 
-function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove, zoom = 1 }) {
+function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onOpenCode, onMove, zoom = 1 }) {
   const handleMouseDown = useCallback(
     (e) => {
       if (e.button !== 0) return;
@@ -1459,7 +1513,7 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
     isSelected ? 'text-primary' : node.icon === 'warning' ? 'text-error' : 'text-gray-500';
 
   const isTest = node.category === 'test';
-  const isDead = isDeadNode(node);
+  const isUnused = isUnusedNode(node);
   const isLeaf = isLeafNode(node);
   const cardBorder = isTest ? { borderTopColor: '#16a34a' } : undefined;
   const fileLabel = node.filePath.split('/').pop();
@@ -1475,9 +1529,10 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
       }}
     >
       <div
-        className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} ${isDead ? 'is-dead' : ''} ${isLeaf ? 'is-leaf' : ''} rounded px-3 py-3 cursor-move h-full overflow-hidden`}
+        className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} ${isUnused ? 'is-dead' : ''} ${isLeaf ? 'is-leaf' : ''} rounded px-3 py-3 cursor-move h-full overflow-hidden`}
         style={cardBorder}
         onMouseDown={handleMouseDown}
+        onDoubleClick={(e) => { e.stopPropagation(); onOpenCode && onOpenCode(); }}
       >
         <div className="flex justify-between items-center mb-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -1507,12 +1562,12 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
               TEST
             </span>
           )}
-          {isDead && (
+          {isUnused && (
             <span
               className="px-1.5 py-0.5 rounded bg-rose-50 text-[9px] font-label-sm text-rose-700 border border-rose-200"
-              title="No callers and not a test — likely unreachable"
+              title="Isolated — zero callers and zero callees"
             >
-              DEAD
+              UNUSED
             </span>
           )}
           {node.isSelfRecursive && (
@@ -1966,14 +2021,14 @@ function FileOverlay({ file, nodes, sourceFiles: dynamicSources, onClose, onJump
       </div>
 
       {/* Directions banner */}
-      <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-start gap-2 shrink-0">
-        <span className="material-symbols-outlined text-[15px] text-indigo-500 mt-0.5 shrink-0">tips_and_updates</span>
-        <div className="text-[12px] text-indigo-900 leading-snug">
+      <div className="px-4 py-2 bg-soft-sage/20 border-b border-soft-sage/40 flex items-start gap-2 shrink-0">
+        <span className="material-symbols-outlined text-[15px] text-deep-olive mt-0.5 shrink-0">tips_and_updates</span>
+        <div className="text-[12px] text-deep-olive leading-snug">
           <strong>File view.</strong>{' '}
           Click a function chip to jump back to the canvas, or any{' '}
           <span className="code-font">L42</span> to scroll its definition into view.{' '}
-          <span className="text-indigo-400">▸</span> markers in the gutter mark where each function starts.{' '}
-          Press <span className="code-font px-1 rounded bg-indigo-100">Esc</span> or the{' '}
+          <span className="text-deep-olive/70">▸</span> markers in the gutter mark where each function starts.{' '}
+          Press <span className="code-font px-1 rounded bg-soft-sage/30">Esc</span> or the{' '}
           <span className="code-font">×</span> above to return to the graph.
         </div>
       </div>
@@ -2163,8 +2218,8 @@ function CodeView({ code, startLine, highlightLine: hlLine, markerLines }) {
           const isHl = ln === hlLine;
           const isMarker = markers.has(ln);
           return (
-            <span key={i} className={isHl ? 'text-primary font-semibold' : isMarker ? 'text-indigo-500' : ''}>
-              {isMarker && !isHl ? <span className="text-indigo-400 mr-0.5">▸</span> : null}
+            <span key={i} className={isHl ? 'text-primary font-semibold' : isMarker ? 'text-deep-olive' : ''}>
+              {isMarker && !isHl ? <span className="text-deep-olive/70 mr-0.5">▸</span> : null}
               {ln}
             </span>
           );
@@ -2177,7 +2232,7 @@ function CodeView({ code, startLine, highlightLine: hlLine, markerLines }) {
           const isMarker = markers.has(ln);
           let cls = '';
           if (isHl) cls = 'bg-primary/10 -ml-4 pl-4 border-l-2 border-primary';
-          else if (isMarker) cls = 'bg-indigo-50/40 -ml-4 pl-4 border-l-2 border-indigo-200';
+          else if (isMarker) cls = 'bg-soft-sage/15 -ml-4 pl-4 border-l-2 border-soft-sage';
           return (
             <div key={i} data-line={ln} className={cls}>
               {line
@@ -2373,7 +2428,7 @@ function NodeEditorPanel({ existingNodes, onClose, onSubmit }) {
         <button
           onClick={handleSubmit}
           disabled={!form.functionName.trim()}
-          className="px-3 py-1.5 rounded bg-primary text-white text-xs font-label-sm hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded bg-primary text-white text-xs font-label-sm hover:opacity-90 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Create Node
         </button>
@@ -2468,7 +2523,7 @@ function TreeFileWithFunctions({ name, fullPath, depth, functions, selectedNodeI
     <div>
       <div
         className={`relative w-full flex items-center gap-1 transition-colors ${
-          fileActive ? 'bg-indigo-50 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+          fileActive ? 'bg-soft-sage/30 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
         }`}
         style={{ paddingLeft: pad }}
       >
@@ -2527,7 +2582,7 @@ function FileFunctionRow({ node, depth, active, onSelect }) {
       ref={ref}
       onClick={onSelect ? () => onSelect(node.id) : undefined}
       className={`relative w-full flex items-center gap-1.5 py-[3px] text-left transition-colors ${
-        active ? 'bg-indigo-50 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+        active ? 'bg-soft-sage/30 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
       }`}
       style={{ paddingLeft: pad }}
     >
@@ -2648,7 +2703,7 @@ function TreeFile({ name, active, onClick, depth = 0 }) {
   return (
     <button
       className={`relative w-full flex items-center gap-1.5 py-[5px] text-left transition-colors ${
-        active ? 'text-gray-900 bg-indigo-50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+        active ? 'text-gray-900 bg-soft-sage/30' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
       }`}
       style={{ paddingLeft: pad }}
       onClick={onClick}
@@ -2728,7 +2783,7 @@ function Minimap({ nodes, selectedNodeId, zoom, pan, canvasSize, onNavigate }) {
         ))}
         {/* Viewport indicator */}
         <div
-          className="absolute border border-gray-400 bg-indigo-50/30 pointer-events-none"
+          className="absolute border border-gray-400 bg-soft-sage/20 pointer-events-none"
           style={{
             left: vpLeft,
             top: vpTop,

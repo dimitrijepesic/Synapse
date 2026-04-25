@@ -5,7 +5,7 @@ import { defaultNodes, defaultEdges } from '../data/mockData';
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
 const COMPACT_NODE_WIDTH = 200;
-const COMPACT_NODE_HEIGHT = 150;
+const COMPACT_NODE_HEIGHT = 64;
 const LAYOUT_ANIM_MS = 500;
 const CLUSTER_ANIM_MS = 380;
 
@@ -209,6 +209,8 @@ const useGraphStore = create((set, get) => ({
   // other. activeView tracks which slice receives writes.
   activeView: null,
   viewLayouts: {},
+  // Per-view camera (zoom + pan), so switching pages preserves the viewport.
+  viewCameras: {},
 
   loadGraph: async (graphId) => {
     set({ loading: true, error: null });
@@ -366,6 +368,7 @@ const useGraphStore = create((set, get) => ({
         loading: false,
         // New graph -> stale per-view caches, drop them so each view recomputes.
         viewLayouts: {},
+        viewCameras: {},
       });
     } catch (e) {
       set({ loading: false, error: e.message });
@@ -395,6 +398,13 @@ const useGraphStore = create((set, get) => ({
       activeView: viewKey,
       nodes: state.nodes.map((n) => (targets[n.id] ? { ...n, position: targets[n.id] } : n)),
       viewLayouts: { ...state.viewLayouts, [viewKey]: targets },
+    }));
+  },
+
+  setViewCamera: (viewKey, camera) => {
+    if (!viewKey || !camera) return;
+    set((state) => ({
+      viewCameras: { ...state.viewCameras, [viewKey]: camera },
     }));
   },
 

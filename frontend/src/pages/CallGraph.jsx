@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect, useRef } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { Header } from '../components/Layout';
 import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
@@ -11,18 +11,13 @@ const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
 
 // --- Reachability classification ---
-// in_degree:0 + non-test => suspected unreachable code. Constructors (Swift
-// `init`, etc.) are excluded — call sites like `Foo(x)` are usually not linked
-// to the init node by the parser, so they'd produce false-positive DEAD flags.
-const isConstructor = (n) =>
-  n.name === 'init' || /\binit\b/.test(n.signature || '') || n.icon === 'add_circle';
-const isDeadNode = (n) =>
-  (n.inDegree ?? 0) === 0 && n.category !== 'test' && !isConstructor(n) && !n.isHttpEndpoint;
+// "Unused" = isolated nodes with zero callers AND zero callees (no edges at all).
+const isUnusedNode = (n) => (n.inDegree ?? 0) === 0 && (n.outDegree ?? 0) === 0;
 const isEntryNode = (n) => (n.inDegree ?? 0) === 0;
 const isLeafNode = (n) => (n.outDegree ?? 0) === 0;
 
 const CANVAS_FILTERS = [
-  { id: 'dead', label: 'Dead', match: isDeadNode, dotClass: 'bg-rose-500' },
+  { id: 'unused', label: 'Unused', match: isUnusedNode, dotClass: 'bg-rose-500' },
   { id: 'entry', label: 'Entry', match: isEntryNode, dotClass: 'bg-deep-olive' },
   { id: 'leaf', label: 'Leaf', match: isLeafNode, dotClass: 'bg-amber-500' },
 ];
@@ -147,7 +142,7 @@ function computeSelfLoopArrow(node) {
 // --- Main Call Graph page ---
 
 export default function Workspace() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, filters, filteredCounts, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, viewCameras, setViewCamera } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -168,8 +163,8 @@ export default function Workspace() {
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
-  // Dead-node visibility: hidden by default, user can toggle to show
-  const [showDeadNodes, setShowDeadNodes] = useState(false);
+  // Unused-node visibility: hidden by default, user can toggle to show
+  const [showUnusedNodes, setShowUnusedNodes] = useState(false);
 
   // Filter panel state
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
@@ -269,19 +264,25 @@ export default function Workspace() {
     return false;
   }, [classFilter]);
 
-  // Visible nodes: hide dead nodes unless toggled on
-  const visibleNodes = showDeadNodes ? nodes : nodes.filter((n) => !isDeadNode(n));
+  // Visible nodes: hide unused (0-in, 0-out) nodes unless toggled on
+  const visibleNodes = showUnusedNodes ? nodes : nodes.filter((n) => !isUnusedNode(n));
   const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
   const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
 
-  // --- Zoom / Pan state ---
+  // --- Zoom / Pan state (persisted per view in graphStore.viewCameras) ---
   const canvasRef = useRef(null);
-  const [zoom, setZoom] = useState(1);
-  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const initialCam = viewCameras['call-graph'];
+  const [zoom, setZoom] = useState(initialCam?.zoom ?? 1);
+  const [pan, setPan] = useState(initialCam?.pan ?? { x: 0, y: 0 });
   const zoomRef = useRef(zoom);
   const panRef = useRef(pan);
   zoomRef.current = zoom;
   panRef.current = pan;
+
+  // Persist camera whenever it changes
+  useEffect(() => {
+    setViewCamera('call-graph', { zoom, pan });
+  }, [zoom, pan, setViewCamera]);
 
   // Track canvas dimensions reactively
   const [canvasSize, setCanvasSize] = useState({ w: 800, h: 600 });
@@ -431,19 +432,35 @@ export default function Workspace() {
       <div className="flex flex-1 pt-14 sm:pt-16 min-h-0 overflow-hidden">
         {/* Sidebar — icon rail + expandable explorer panel */}
         <SideNav
+          activePage="call-graph"
           project={project}
           activeTab={ui.activeSideTab}
           onTabChange={(tab) => setActiveSideTab(ui.activeSideTab === tab ? null : tab)}
-          onNewNode={openNodeEditor}
           nodes={nodes}
           selectedNodeId={selectedNodeId}
           selectedFile={selectedFile}
           onFileOpen={handleFileOpen}
           onFunctionSelect={handleFunctionSelect}
+          onOverview={handleOverview}
+          overviewLoading={overviewLoading}
+          onHotspots={handleHotspots}
+          hotspotsLoading={hotspotsLoading}
+          onDeadCode={handleDeadCode}
+          deadCodeLoading={deadCodeLoading}
+          showUnusedNodes={showUnusedNodes}
+          onToggleUnused={() => setShowUnusedNodes((v) => !v)}
+          unusedCount={nodes.filter(isUnusedNode).length}
+          classFilter={classFilter}
+          onToggleClassFilter={toggleClassFilter}
+          onClearClassFilter={() => setClassFilter(new Set())}
+          visibleNodes={visibleNodes}
+          filterPanelOpen={filterPanelOpen}
+          onToggleFilterPanel={() => setFilterPanelOpen((v) => !v)}
+          activeFilterCount={activeFilterCount}
         />
 
         <main className="flex-1 flex min-h-0 relative">
-          {/* Top-left toolbar: Auto Layout + classification filters */}
+          {/* Top-left toolbar: Auto Layout + Packages */}
           <div className="absolute top-2 sm:top-4 left-2 sm:left-4 z-10 flex items-center gap-2">
             <button
               onClick={() => autoLayout()}
@@ -452,39 +469,6 @@ export default function Workspace() {
             >
               <span className="material-symbols-outlined text-[16px]">auto_fix_high</span>
               <span className="font-label-sm">Auto Layout</span>
-            </button>
-            <button
-              onClick={handleOverview}
-              disabled={overviewLoading}
-              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
-              title="AI codebase overview"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${overviewLoading ? 'animate-spin' : ''}`}>
-                {overviewLoading ? 'progress_activity' : 'summarize'}
-              </span>
-              <span className="font-label-sm">Overview</span>
-            </button>
-            <button
-              onClick={handleHotspots}
-              disabled={hotspotsLoading}
-              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
-              title="Find hotspot functions"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${hotspotsLoading ? 'animate-spin' : ''}`}>
-                {hotspotsLoading ? 'progress_activity' : 'local_fire_department'}
-              </span>
-              <span className="font-label-sm">Hotspots</span>
-            </button>
-            <button
-              onClick={handleDeadCode}
-              disabled={deadCodeLoading}
-              className="glass-panel rounded-lg px-3 py-1.5 flex items-center gap-1.5 text-gray-500 hover:text-gray-900 transition-colors disabled:opacity-50"
-              title="Find dead code"
-            >
-              <span className={`material-symbols-outlined text-[16px] ${deadCodeLoading ? 'animate-spin' : ''}`}>
-                {deadCodeLoading ? 'progress_activity' : 'delete_sweep'}
-              </span>
-              <span className="font-label-sm">Dead Code</span>
             </button>
             <button
               onClick={toggleClusterView}
@@ -502,73 +486,6 @@ export default function Workspace() {
                 {clusterView ? 'check' : 'package_2'}
               </span>
               <span className="font-label-sm">{clusterView ? 'Packaged' : 'Packages'}</span>
-            </button>
-            <button
-              onClick={() => setShowDeadNodes((v) => !v)}
-              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
-                showDeadNodes
-                  ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-700 shadow-sm'
-                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
-              }`}
-              title={showDeadNodes ? 'Hide dead nodes' : `Show dead nodes (${nodes.filter(isDeadNode).length} hidden)`}
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                {showDeadNodes ? 'visibility' : 'visibility_off'}
-              </span>
-              <span className="font-label-sm">Dead</span>
-              <span className={`text-[10px] ${showDeadNodes ? 'text-white/70' : 'text-gray-400'}`}>
-                {nodes.filter(isDeadNode).length}
-              </span>
-            </button>
-            <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
-              {CANVAS_FILTERS.map((f) => {
-                const on = classFilter.has(f.id);
-                const count = visibleNodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
-                return (
-                  <button
-                    key={f.id}
-                    onClick={() => toggleClassFilter(f.id)}
-                    title={`${f.label}: ${count} node${count === 1 ? '' : 's'}`}
-                    className={`text-[11px] px-2 py-0.5 rounded flex items-center gap-1.5 border transition-colors ${
-                      on
-                        ? 'bg-gray-900 text-white border-gray-900'
-                        : 'bg-white/70 text-gray-600 border-transparent hover:text-gray-900'
-                    }`}
-                  >
-                    <span className={`w-1.5 h-1.5 rounded-full ${f.dotClass}`} />
-                    <span className="font-label-sm">{f.label}</span>
-                    <span className={`text-[10px] ${on ? 'text-white/70' : 'text-gray-400'}`}>{count}</span>
-                  </button>
-                );
-              })}
-              {classFilter.size > 0 && (
-                <button
-                  onClick={() => setClassFilter(new Set())}
-                  className="text-[10px] px-1.5 py-0.5 rounded text-gray-400 hover:text-gray-900"
-                  title="Clear classification filter"
-                >
-                  clear
-                </button>
-              )}
-            </div>
-            <button
-              onClick={() => setFilterPanelOpen((v) => !v)}
-              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
-                filterPanelOpen || activeFilterCount > 0
-                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
-                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
-              }`}
-              title="Filter graph nodes"
-            >
-              <span className="material-symbols-outlined text-[16px]">filter_list</span>
-              <span className="font-label-sm">Filter</span>
-              {activeFilterCount > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                  filterPanelOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                }`}>
-                  {activeFilterCount}
-                </span>
-              )}
             </button>
             {filteredCounts && (
               <span className="text-[11px] text-gray-500 font-label-sm self-center">
@@ -686,6 +603,7 @@ export default function Workspace() {
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
                         onSelect={() => selectNode(node.id)}
+                        onOpenCode={() => handleFunctionSelect(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
                       />
@@ -733,6 +651,7 @@ export default function Workspace() {
                         isDimmed={dimByNeighbor || dimByFilter}
                         edges={visibleEdges}
                         onSelect={() => selectNode(node.id)}
+                        onOpenCode={() => handleFunctionSelect(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
                       />
@@ -963,26 +882,83 @@ export default function Workspace() {
 
 // --- Side Navigation ---
 
-function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNodeId, selectedFile, onFileOpen, onFunctionSelect }) {
+function SideNav({
+  activePage,
+  project,
+  activeTab,
+  onTabChange,
+  nodes,
+  selectedNodeId,
+  selectedFile,
+  onFileOpen,
+  onFunctionSelect,
+  onOverview,
+  overviewLoading,
+  onHotspots,
+  hotspotsLoading,
+  onDeadCode,
+  deadCodeLoading,
+  showUnusedNodes,
+  onToggleUnused,
+  unusedCount,
+  classFilter,
+  onToggleClassFilter,
+  onClearClassFilter,
+  visibleNodes,
+  filterPanelOpen,
+  onToggleFilterPanel,
+  activeFilterCount,
+}) {
   const tabs = [
     { id: 'explorer', icon: 'folder_open', label: 'Explorer' },
     { id: 'functions', icon: 'terminal', label: 'Functions', filled: true },
   ];
 
+  const navLinks = [
+    { to: '/workspace/call-graph', icon: 'hub', label: 'Call Graph', page: 'call-graph' },
+    { to: '/workspace/control-flow', icon: 'fork_right', label: 'Control Flow', page: 'control-flow' },
+  ];
+
   const panelOpen = activeTab === 'explorer' || activeTab === 'functions';
   const panelTitle = activeTab === 'functions' ? 'Functions' : 'Explorer';
+
+  const railBtnBase =
+    'w-full flex flex-col items-center py-1.5 sm:py-2 md:py-2.5 rounded transition-all duration-100 ease-in group';
+  const railIcon =
+    'material-symbols-outlined text-[18px] sm:text-[20px] md:text-[22px] md:mb-0.5 group-hover:scale-110 transition-transform';
+  const railLabel =
+    'hidden md:block font-grotesk uppercase text-[9px] tracking-widest text-center w-full truncate px-1';
 
   return (
     <div className="flex min-h-0 shrink-0 z-40">
       {/* Icon rail */}
-      <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-4 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)]">
-        {/* Tab buttons — top */}
-        <div className="flex flex-col items-center w-full gap-1 md:gap-2 px-0.5 sm:px-1 md:px-2 flex-1">
+      <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-3 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)] overflow-y-auto">
+        <div className="flex flex-col items-center w-full gap-1 px-0.5 sm:px-1 md:px-2 flex-1">
+          {/* Page navigation */}
+          {navLinks.map((nl) => (
+            <Link
+              key={nl.page}
+              to={nl.to}
+              className={`${railBtnBase} ${
+                activePage === nl.page
+                  ? 'text-deep-olive bg-soft-sage/30'
+                  : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
+              }`}
+              title={nl.label}
+            >
+              <span className={railIcon}>{nl.icon}</span>
+              <span className={railLabel}>{nl.label}</span>
+            </Link>
+          ))}
+
+          <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* Explorer / Functions tabs */}
           {tabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => onTabChange(tab.id)}
-              className={`w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded transition-all duration-100 ease-in group ${
+              className={`${railBtnBase} ${
                 activeTab === tab.id
                   ? 'text-deep-olive bg-soft-sage/20'
                   : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
@@ -990,47 +966,137 @@ function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNo
               title={tab.label}
             >
               <span
-                className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] md:mb-1 group-hover:scale-110 transition-transform"
+                className={railIcon}
                 style={activeTab === tab.id && tab.filled ? { fontVariationSettings: "'FILL' 1" } : undefined}
               >
                 {tab.icon}
               </span>
-              <span className="hidden md:block font-grotesk uppercase text-[10px] tracking-widest text-center w-full truncate px-1">
-                {tab.label}
-              </span>
+              <span className={railLabel}>{tab.label}</span>
             </button>
           ))}
+
+          <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* AI / analysis actions */}
           <button
-            onClick={onNewNode}
-            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mt-2 md:mt-4 rounded-full bg-deep-olive text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-sm"
-            title="New Node"
+            onClick={onOverview}
+            disabled={overviewLoading}
+            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
+            title="AI codebase overview"
           >
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px] md:text-[24px]">add</span>
+            <span className={`${railIcon} ${overviewLoading ? 'animate-spin' : ''}`}>
+              {overviewLoading ? 'progress_activity' : 'summarize'}
+            </span>
+            <span className={railLabel}>Overview</span>
           </button>
+          <button
+            onClick={onHotspots}
+            disabled={hotspotsLoading}
+            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
+            title="Find hotspot functions"
+          >
+            <span className={`${railIcon} ${hotspotsLoading ? 'animate-spin' : ''}`}>
+              {hotspotsLoading ? 'progress_activity' : 'local_fire_department'}
+            </span>
+            <span className={railLabel}>Hotspots</span>
+          </button>
+          <button
+            onClick={onDeadCode}
+            disabled={deadCodeLoading}
+            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
+            title="Find dead code"
+          >
+            <span className={`${railIcon} ${deadCodeLoading ? 'animate-spin' : ''}`}>
+              {deadCodeLoading ? 'progress_activity' : 'delete_sweep'}
+            </span>
+            <span className={railLabel}>Dead Code</span>
+          </button>
+
+          <div className="w-8 h-px bg-gray-200 my-1" />
+
+          {/* Filter + Unused toggle */}
+          <button
+            onClick={onToggleFilterPanel}
+            className={`${railBtnBase} relative ${
+              filterPanelOpen || activeFilterCount > 0
+                ? 'text-indigo-600 bg-indigo-50'
+                : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
+            }`}
+            title="Filter graph nodes"
+          >
+            <span className={railIcon}>filter_list</span>
+            <span className={railLabel}>Filter</span>
+            {activeFilterCount > 0 && (
+              <span className="absolute top-0.5 right-1 text-[9px] px-1 rounded-full bg-indigo-600 text-white font-medium leading-tight">
+                {activeFilterCount}
+              </span>
+            )}
+          </button>
+          <button
+            onClick={onToggleUnused}
+            className={`${railBtnBase} relative ${
+              showUnusedNodes
+                ? 'text-rose-600 bg-rose-50'
+                : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
+            }`}
+            title={showUnusedNodes ? 'Hide unused nodes' : `Show unused nodes (${unusedCount} hidden)`}
+          >
+            <span className={railIcon}>{showUnusedNodes ? 'visibility' : 'visibility_off'}</span>
+            <span className={railLabel}>Unused</span>
+            {unusedCount > 0 && (
+              <span className="absolute top-0.5 right-1 text-[9px] px-1 rounded-full bg-gray-200 text-gray-600 font-medium leading-tight">
+                {unusedCount}
+              </span>
+            )}
+          </button>
+
+          {/* Classification chips: Unused / Entry / Leaf */}
+          <div className="w-full flex flex-col items-stretch gap-1 mt-1 px-0.5">
+            {CANVAS_FILTERS.map((f) => {
+              const on = classFilter.has(f.id);
+              const count = visibleNodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
+              return (
+                <button
+                  key={f.id}
+                  onClick={() => onToggleClassFilter(f.id)}
+                  title={`${f.label}: ${count} node${count === 1 ? '' : 's'}`}
+                  className={`text-[10px] px-1.5 py-1 rounded flex items-center justify-center gap-1 border transition-colors ${
+                    on
+                      ? 'bg-gray-900 text-white border-gray-900'
+                      : 'bg-white/70 text-gray-600 border-gray-200 hover:text-gray-900'
+                  }`}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${f.dotClass}`} />
+                  <span className="font-label-sm hidden md:inline">{f.label}</span>
+                  <span className={`text-[9px] ${on ? 'text-white/70' : 'text-gray-400'}`}>{count}</span>
+                </button>
+              );
+            })}
+            {classFilter.size > 0 && (
+              <button
+                onClick={onClearClassFilter}
+                className="text-[9px] py-0.5 rounded text-gray-400 hover:text-gray-900"
+                title="Clear classification filter"
+              >
+                clear
+              </button>
+            )}
+          </div>
         </div>
 
-        {/* Bottom — settings, help, project */}
-        <div className="flex flex-col items-center w-full gap-1 md:gap-2 px-0.5 sm:px-1 md:px-2 mt-auto">
-          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive transition-all duration-100 ease-in group" title="Settings">
-            <span className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] group-hover:scale-110 transition-transform">settings</span>
-          </button>
-          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive transition-all duration-100 ease-in group" title="Help">
-            <span className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] group-hover:scale-110 transition-transform">help_outline</span>
-          </button>
-          {/* Project badge */}
-          <div className="flex flex-col items-center w-full mt-2 md:mt-3 pt-2 md:pt-3 border-t border-gray-200">
-            <div className="w-7 sm:w-8 md:w-10 h-7 sm:h-8 md:h-10 rounded bg-soft-sage/20 flex items-center justify-center border border-soft-sage mb-1">
-              <span className="text-xs sm:text-sm md:text-lg font-black text-deep-olive">
-                {project.name.charAt(0).toLowerCase()}
-              </span>
-            </div>
-            <div className="hidden md:block text-[9px] font-grotesk uppercase tracking-widest text-gray-900 text-center w-full truncate px-1" title={project.name}>
-              {project.name}
-            </div>
-            <div className="hidden md:block text-[8px] font-grotesk uppercase tracking-widest text-gray-400 mt-0.5">
-              {project.branch}
-            </div>
-          </div>
+        {/* Bottom — GitHub icon */}
+        <div className="flex flex-col items-center w-full px-0.5 sm:px-1 md:px-2 mt-auto pt-2 md:pt-3 border-t border-gray-200">
+          <a
+            href={project?.repoUrl || '#'}
+            target={project?.repoUrl ? '_blank' : undefined}
+            rel="noreferrer"
+            className="w-7 sm:w-8 md:w-10 h-7 sm:h-8 md:h-10 rounded flex items-center justify-center text-gray-700 hover:text-black hover:bg-gray-100 transition-colors"
+            title={project?.name ? `${project.name} on GitHub` : 'GitHub'}
+          >
+            <svg viewBox="0 0 24 24" className="w-5 h-5 md:w-6 md:h-6" fill="currentColor" aria-hidden="true">
+              <path d="M12 .5C5.73.5.75 5.48.75 11.75c0 4.97 3.22 9.18 7.69 10.66.56.1.77-.24.77-.54v-1.9c-3.13.68-3.79-1.34-3.79-1.34-.51-1.3-1.25-1.65-1.25-1.65-1.02-.7.08-.69.08-.69 1.13.08 1.72 1.16 1.72 1.16 1 1.72 2.63 1.22 3.27.93.1-.73.39-1.22.71-1.5-2.5-.28-5.13-1.25-5.13-5.57 0-1.23.44-2.24 1.16-3.03-.12-.29-.5-1.43.11-2.98 0 0 .95-.3 3.1 1.16a10.7 10.7 0 0 1 5.65 0c2.15-1.46 3.1-1.16 3.1-1.16.61 1.55.23 2.69.11 2.98.72.79 1.16 1.8 1.16 3.03 0 4.34-2.64 5.29-5.15 5.56.4.35.76 1.04.76 2.1v3.11c0 .3.2.65.78.54 4.47-1.49 7.68-5.69 7.68-10.66C23.25 5.48 18.27.5 12 .5Z" />
+            </svg>
+          </a>
         </div>
       </nav>
 
@@ -1417,7 +1483,7 @@ function ClusterCard({ cluster, position, isExpanded, onToggle }) {
 
 // --- Draggable Node Card ---
 
-function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove, zoom = 1 }) {
+function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onOpenCode, onMove, zoom = 1 }) {
   const handleMouseDown = useCallback(
     (e) => {
       if (e.button !== 0) return;
@@ -1448,7 +1514,7 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
     isSelected ? 'text-primary' : node.icon === 'warning' ? 'text-error' : 'text-gray-500';
 
   const isTest = node.category === 'test';
-  const isDead = isDeadNode(node);
+  const isUnused = isUnusedNode(node);
   const isLeaf = isLeafNode(node);
   const cardBorder = isTest ? { borderTopColor: '#16a34a' } : undefined;
   const fileLabel = node.filePath.split('/').pop();
@@ -1464,9 +1530,10 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
       }}
     >
       <div
-        className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} ${isDead ? 'is-dead' : ''} ${isLeaf ? 'is-leaf' : ''} rounded px-3 py-3 cursor-move h-full overflow-hidden`}
+        className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} ${isUnused ? 'is-dead' : ''} ${isLeaf ? 'is-leaf' : ''} rounded px-3 py-3 cursor-move h-full overflow-hidden`}
         style={cardBorder}
         onMouseDown={handleMouseDown}
+        onDoubleClick={(e) => { e.stopPropagation(); onOpenCode && onOpenCode(); }}
       >
         <div className="flex justify-between items-center mb-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -1504,12 +1571,12 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
               HTTP
             </span>
           )}
-          {isDead && (
+          {isUnused && (
             <span
               className="px-1.5 py-0.5 rounded bg-rose-50 text-[9px] font-label-sm text-rose-700 border border-rose-200"
-              title="No callers and not a test — likely unreachable"
+              title="Isolated — zero callers and zero callees"
             >
-              DEAD
+              UNUSED
             </span>
           )}
           {node.isSelfRecursive && (
@@ -1541,9 +1608,9 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
 // --- Compact Node Card (for inside clusters) ---
 
 const COMPACT_NODE_WIDTH = 200;
-const COMPACT_NODE_HEIGHT = 150;
+const COMPACT_NODE_HEIGHT = 64;
 
-function CompactNodeCard({ node, isSelected, isDimmed = false, onSelect, onMove, zoom = 1 }) {
+function CompactNodeCard({ node, isSelected, isDimmed = false, onSelect, onOpenCode, onMove, zoom = 1 }) {
   const handleMouseDown = useCallback(
     (e) => {
       if (e.button !== 0) return;
@@ -1584,6 +1651,7 @@ function CompactNodeCard({ node, isSelected, isDimmed = false, onSelect, onMove,
       <div
         className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} rounded px-2.5 py-2 cursor-move h-full overflow-hidden`}
         onMouseDown={handleMouseDown}
+        onDoubleClick={(e) => { e.stopPropagation(); onOpenCode && onOpenCode(); }}
       >
         <div className="flex items-center gap-1.5">
           <span className={`material-symbols-outlined text-[14px] ${iconColor}`}>{node.icon}</span>

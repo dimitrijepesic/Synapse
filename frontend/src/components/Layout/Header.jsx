@@ -6,8 +6,6 @@ export default function Header({ activePage }) {
 
   const navLinks = [
     { to: '/home', label: 'Dashboard', page: 'home' },
-    { to: '/workspace/call-graph', label: 'Call Graph', page: 'call-graph' },
-    { to: '/workspace/control-flow', label: 'Control Flow', page: 'control-flow' },
   ];
 
   const isWorkspacePage = activePage === 'call-graph' || activePage === 'control-flow';
@@ -71,14 +69,6 @@ export default function Header({ activePage }) {
           >
             <span className="material-symbols-outlined text-[18px]">add</span>
           </Link>
-          <div className="flex items-center gap-1 sm:gap-2 text-zinc-400 ml-1 sm:ml-2">
-            <button className="hover:text-white transition-colors duration-75 active:scale-95 p-1.5 sm:p-2">
-              <span className="material-symbols-outlined text-[20px] sm:text-[24px]">settings</span>
-            </button>
-            <button className="hidden sm:block hover:text-white transition-colors duration-75 active:scale-95 p-1.5 sm:p-2">
-              <span className="material-symbols-outlined">account_tree</span>
-            </button>
-          </div>
           <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-white/20 bg-white/10 ml-1 sm:ml-2 flex items-center justify-center text-zinc-300">
             <span className="material-symbols-outlined text-[16px] sm:text-[18px]">person</span>
           </div>
