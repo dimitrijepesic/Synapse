@@ -1,4 +1,4 @@
-# Synapsis
+# Synapse
 
 Interactive call-graph explorer for Swift codebases. Map every function, every call, every dependency — then click any node to read the source, ask the AI what it does, or predict what breaks if you change it.
 
