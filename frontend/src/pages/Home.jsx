@@ -102,7 +102,7 @@ export default function Home() {
             {/* URL Input */}
             <div className="flex flex-col gap-2">
               <label className="font-label-sm text-label-sm text-gray-500 uppercase tracking-widest">Repository URL</label>
-              <div className="relative flex items-center bg-white rounded-lg border border-gray-300 focus-within:border-indigo-500 focus-within:ring-1 focus-within:ring-indigo-500 shadow-sm transition-all duration-200">
+              <div className="relative flex items-center bg-white rounded-lg border border-gray-300 focus-within:border-deep-olive focus-within:ring-1 focus-within:ring-soft-sage shadow-sm transition-all duration-200">
                 <span className="material-symbols-outlined absolute left-4 text-gray-400">link</span>
                 <input
                   className="w-full bg-transparent border-none text-gray-900 font-body-md pl-12 pr-12 py-3.5 focus:ring-0 placeholder:text-gray-400 font-mono text-sm"
@@ -116,7 +116,7 @@ export default function Home() {
                 <button
                   onClick={handleAnalyze}
                   disabled={loading || !repoUrl.trim()}
-                  className="absolute right-1.5 bg-indigo-600 text-white p-1.5 rounded-md hover:bg-indigo-700 transition-colors flex items-center justify-center active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
+                  className="absolute right-1.5 bg-deep-olive text-white p-1.5 rounded-md hover:bg-deep-olive/90 transition-colors flex items-center justify-center active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
                   {loading ? (
                     <span className="material-symbols-outlined text-sm animate-spin">progress_activity</span>
@@ -129,7 +129,7 @@ export default function Home() {
                 <p className="text-sm text-red-600 mt-1">{error}</p>
               )}
               {loading && (
-                <p className="text-sm text-indigo-600 mt-1">Cloning and analyzing repository... this may take a minute.</p>
+                <p className="text-sm text-deep-olive mt-1">Cloning and analyzing repository... this may take a minute.</p>
               )}
             </div>
 
@@ -156,7 +156,7 @@ export default function Home() {
             <div
               className={`mt-2 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors cursor-pointer group ${
                 dragOver
-                  ? 'border-indigo-500 bg-indigo-50'
+                  ? 'border-deep-olive bg-soft-sage/20'
                   : 'border-gray-200 bg-gray-50 hover:bg-gray-100 hover:border-gray-300'
               }`}
               onDrop={handleDrop}
@@ -173,7 +173,7 @@ export default function Home() {
                 disabled={loading}
               />
               <div className={`w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center transition-colors ${
-                dragOver ? 'text-indigo-600' : 'text-gray-500 group-hover:text-indigo-600'
+                dragOver ? 'text-deep-olive' : 'text-gray-500 group-hover:text-deep-olive'
               }`}>
                 <span className="material-symbols-outlined">cloud_upload</span>
               </div>

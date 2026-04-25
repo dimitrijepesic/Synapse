@@ -2,28 +2,28 @@ import { Link } from 'react-router-dom';
 
 export default function Login() {
   return (
-    <div className="bg-[#fcf8f8] min-h-screen flex items-center justify-center antialiased p-8 font-inter">
+    <div className="bg-[#fcf8f8] min-h-screen flex items-center justify-center antialiased p-8 font-capriola">
       <main className="w-full max-w-[400px]">
         {/* Brand Logo */}
         <div className="text-center mb-8">
           <Link to="/" className="inline-flex items-center gap-2">
-            <span className="material-symbols-outlined text-[36px] text-indigo-600" style={{ fontVariationSettings: "'FILL' 1" }}>account_tree</span>
-            <h1 className="text-4xl font-black tracking-tighter text-gray-900">CodeGraph</h1>
+            <img src="https://i.imgur.com/HrjNptE.png" alt="Synapse" className="h-10 w-10 object-contain" />
+            <h1 className="text-4xl font-black tracking-tighter text-deep-olive">Synapse</h1>
           </Link>
           <p className="text-sm text-gray-500 mt-2">Precision codebase intelligence.</p>
         </div>
 
         {/* Login Card */}
         <div className="bg-white rounded-xl p-8 shadow-[0_12px_24px_rgba(0,0,0,0.08)]">
-          <h2 className="text-xl font-semibold mb-4 text-gray-900">Sign in to your account</h2>
+          <h2 className="text-xl font-semibold mb-4 text-deep-olive">Sign in to your account</h2>
 
           <form className="space-y-4" onSubmit={(e) => e.preventDefault()}>
             {/* Email */}
             <div>
-              <label className="block text-xs font-semibold text-gray-900 mb-1 tracking-wide" htmlFor="email">Email address</label>
+              <label className="block text-xs font-semibold text-deep-olive mb-1 tracking-wide" htmlFor="email">Email address</label>
               <input
                 autoComplete="email"
-                className="w-full bg-white border border-[#F5F5F7] rounded px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-transparent focus:ring-0 focus:shadow-[0_2px_4px_rgba(0,0,0,0.05),0_0_0_2px_#4f46e5] transition-shadow placeholder:text-gray-400"
+                className="brand-input w-full bg-white border border-[#F5F5F7] rounded px-4 py-2.5 text-sm text-deep-olive placeholder:text-gray-400"
                 id="email"
                 name="email"
                 placeholder="developer@example.com"
@@ -35,12 +35,12 @@ export default function Login() {
             {/* Password */}
             <div>
               <div className="flex items-center justify-between mb-1">
-                <label className="block text-xs font-semibold text-gray-900" htmlFor="password">Password</label>
-                <a className="text-[11px] font-medium text-gray-500 hover:text-indigo-600 transition-colors" href="#">Forgot password?</a>
+                <label className="block text-xs font-semibold text-deep-olive" htmlFor="password">Password</label>
+                <a className="text-[11px] font-medium text-gray-500 hover:text-soft-sage transition-colors" href="#">Forgot password?</a>
               </div>
               <input
                 autoComplete="current-password"
-                className="w-full bg-white border border-[#F5F5F7] rounded px-4 py-2.5 text-sm text-gray-900 focus:outline-none focus:border-transparent focus:ring-0 focus:shadow-[0_2px_4px_rgba(0,0,0,0.05),0_0_0_2px_#4f46e5] transition-shadow placeholder:text-gray-400"
+                className="brand-input w-full bg-white border border-[#F5F5F7] rounded px-4 py-2.5 text-sm text-deep-olive placeholder:text-gray-400"
                 id="password"
                 name="password"
                 placeholder="••••••••"
@@ -51,7 +51,7 @@ export default function Login() {
 
             {/* Sign In Button */}
             <button
-              className="w-full bg-black text-white hover:bg-indigo-600 text-xs font-semibold rounded py-3 px-4 transition-colors flex items-center justify-center gap-2 tracking-wide"
+              className="w-full bg-deep-olive text-white hover:bg-deep-olive/90 text-xs font-semibold rounded py-3 px-4 transition-colors flex items-center justify-center gap-2 tracking-wide"
               type="submit"
             >
               Sign In
@@ -67,7 +67,7 @@ export default function Login() {
 
           {/* GitHub Button */}
           <button
-            className="w-full bg-white border border-[#F5F5F7] text-gray-900 hover:bg-gray-50 text-xs font-semibold rounded py-3 px-4 transition-colors flex items-center justify-center gap-2 shadow-[0_2px_4px_rgba(0,0,0,0.05)] tracking-wide"
+            className="w-full bg-white border border-[#F5F5F7] text-deep-olive hover:bg-gray-50 text-xs font-semibold rounded py-3 px-4 transition-colors flex items-center justify-center gap-2 shadow-[0_2px_4px_rgba(0,0,0,0.05)] tracking-wide"
             type="button"
           >
             <svg aria-hidden="true" className="w-5 h-5" fill="currentColor" viewBox="0 0 24 24">
@@ -78,14 +78,14 @@ export default function Login() {
 
           <p className="text-sm text-gray-500 text-center mt-6">
             Don&apos;t have an account?{' '}
-            <Link to="/" className="text-gray-700 hover:text-indigo-600 transition-colors font-medium">Request access</Link>
+            <Link to="/" className="text-deep-olive hover:text-soft-sage transition-colors font-medium">Request access</Link>
           </p>
         </div>
 
         {/* Footer / Legal */}
         <div className="mt-8 text-center flex justify-center gap-4">
-          <a className="text-[11px] font-medium text-gray-400 hover:text-gray-900 transition-colors" href="#">Privacy Policy</a>
-          <a className="text-[11px] font-medium text-gray-400 hover:text-gray-900 transition-colors" href="#">Terms of Service</a>
+          <a className="text-[11px] font-medium text-gray-400 hover:text-deep-olive transition-colors" href="#">Privacy Policy</a>
+          <a className="text-[11px] font-medium text-gray-400 hover:text-deep-olive transition-colors" href="#">Terms of Service</a>
         </div>
       </main>
     </div>

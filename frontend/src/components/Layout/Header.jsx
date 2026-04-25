@@ -21,8 +21,8 @@ export default function Header({ activePage }) {
             <span className="material-symbols-outlined">{mobileMenuOpen ? 'close' : 'menu'}</span>
           </button>
           <Link to="/" className="text-lg sm:text-xl font-black tracking-tighter text-white flex items-center gap-2 font-grotesk">
-            <span className="material-symbols-outlined text-[20px] sm:text-[24px] text-indigo-400" style={{ fontVariationSettings: "'FILL' 1" }}>account_tree</span>
-            CodeGraph
+            <img src="https://i.imgur.com/N5oONRU.png" alt="Synapse" className="h-6 w-6 sm:h-7 sm:w-7 object-contain" />
+            Synapse
           </Link>
           <nav className="hidden md:flex h-full items-center gap-6 font-grotesk tracking-tight">
             {navLinks.map(({ to, label, page }) => (
@@ -31,7 +31,7 @@ export default function Header({ activePage }) {
                 to={to}
                 className={`h-full flex items-center transition-colors duration-75 active:scale-95 text-label-md font-label-md ${
                   activePage === page
-                    ? 'text-white border-b-2 border-indigo-400'
+                    ? 'text-white border-b-2 border-soft-sage'
                     : 'text-zinc-400 hover:text-white'
                 }`}
               >

@@ -1,7 +1,18 @@
 @import "tailwindcss";
 
 @theme {
-  /* Colors — Precision & Clarity (Light theme) */
+  /* Brand palette — single source of truth */
+  --color-deep-olive: #1A2517;
+  --color-soft-sage:  #ACC8A2;
+  --color-white:      #ffffff;
+
+  /* Soft Sage glow stops (named so .sage-glow stays readable) */
+  --color-soft-sage-glow-strong: rgba(172, 200, 162, 0.30);
+  --color-soft-sage-glow-mid:    rgba(172, 200, 162, 0.18);
+  --color-soft-sage-glow-soft:   rgba(172, 200, 162, 0.06);
+  --color-soft-sage-glow-zero:   rgba(172, 200, 162, 0);
+
+  /* Surface scale (kept neutral) */
   --color-surface: #fcf8f8;
   --color-surface-dim: #ddd9d9;
   --color-surface-bright: #fcf8f8;
@@ -10,40 +21,41 @@
   --color-surface-container: #f1edec;
   --color-surface-container-high: #ebe7e7;
   --color-surface-container-highest: #e5e2e1;
-  --color-on-surface: #1c1b1b;
+  --color-on-surface: var(--color-deep-olive);
   --color-on-surface-variant: #444748;
   --color-inverse-surface: #313030;
   --color-inverse-on-surface: #f4f0ef;
   --color-outline: #747878;
   --color-outline-variant: #c4c7c8;
-  --color-surface-tint: #4f46e5;
+  --color-surface-tint: var(--color-deep-olive);
   --color-surface-variant: #e5e2e1;
 
-  --color-primary: #4f46e5;
-  --color-on-primary: #ffffff;
-  --color-primary-container: #e0e7ff;
-  --color-on-primary-container: #312e81;
-  --color-inverse-primary: #a5b4fc;
+  /* Primary — Deep Olive */
+  --color-primary: var(--color-deep-olive);
+  --color-on-primary: var(--color-white);
+  --color-primary-container: var(--color-soft-sage);
+  --color-on-primary-container: var(--color-deep-olive);
+  --color-inverse-primary: var(--color-soft-sage);
 
   --color-secondary: #5e5e5e;
-  --color-on-secondary: #ffffff;
+  --color-on-secondary: var(--color-white);
   --color-secondary-container: #e2e2e2;
   --color-on-secondary-container: #646464;
 
   --color-tertiary: #5f5e5e;
-  --color-on-tertiary: #ffffff;
-  --color-tertiary-container: #ffffff;
+  --color-on-tertiary: var(--color-white);
+  --color-tertiary-container: var(--color-white);
   --color-on-tertiary-container: #767575;
 
   --color-error: #ba1a1a;
-  --color-on-error: #ffffff;
+  --color-on-error: var(--color-white);
   --color-error-container: #ffdad6;
   --color-on-error-container: #93000a;
 
-  --color-primary-fixed: #e0e7ff;
-  --color-primary-fixed-dim: #a5b4fc;
-  --color-on-primary-fixed: #1e1b4b;
-  --color-on-primary-fixed-variant: #3730a3;
+  --color-primary-fixed: var(--color-soft-sage);
+  --color-primary-fixed-dim: var(--color-soft-sage);
+  --color-on-primary-fixed: var(--color-deep-olive);
+  --color-on-primary-fixed-variant: var(--color-deep-olive);
   --color-secondary-fixed: #e2e2e2;
   --color-secondary-fixed-dim: #c6c6c6;
   --color-on-secondary-fixed: #1b1b1b;
@@ -53,19 +65,23 @@
   --color-on-tertiary-fixed: #1b1c1c;
   --color-on-tertiary-fixed-variant: #474747;
 
-  --color-background: #fcf8f8;
-  --color-on-background: #1c1b1b;
+  --color-background: var(--color-white);
+  --color-on-background: var(--color-deep-olive);
 
-  /* Font Families — Inter for everything (Precision & Clarity) */
-  --font-grotesk: 'Inter', sans-serif;
-  --font-inter: 'Inter', sans-serif;
-  --font-headline-xl: 'Inter', sans-serif;
-  --font-headline-lg: 'Inter', sans-serif;
-  --font-headline-md: 'Inter', sans-serif;
-  --font-body-lg: 'Inter', sans-serif;
-  --font-body-md: 'Inter', sans-serif;
-  --font-label-md: 'Inter', sans-serif;
-  --font-label-sm: 'Inter', sans-serif;
+  /* Font Families — Capriola for prose, Fira Code for technical text */
+  --font-sans: 'Capriola', system-ui, sans-serif;
+  --font-mono: 'Fira Code', 'JetBrains Mono', ui-monospace, monospace;
+  --font-grotesk: 'Capriola', system-ui, sans-serif;
+  --font-inter: 'Capriola', system-ui, sans-serif;
+  --font-capriola: 'Capriola', system-ui, sans-serif;
+  --font-fira: 'Fira Code', 'JetBrains Mono', ui-monospace, monospace;
+  --font-headline-xl: 'Capriola', system-ui, sans-serif;
+  --font-headline-lg: 'Capriola', system-ui, sans-serif;
+  --font-headline-md: 'Capriola', system-ui, sans-serif;
+  --font-body-lg: 'Capriola', system-ui, sans-serif;
+  --font-body-md: 'Capriola', system-ui, sans-serif;
+  --font-label-md: 'Capriola', system-ui, sans-serif;
+  --font-label-sm: 'Capriola', system-ui, sans-serif;
 
   /* Font Sizes with modifiers */
   --text-headline-xl: 48px;
@@ -102,12 +118,27 @@
   --text-label-sm--font-weight: 500;
 }
 
-/* Light mesh background */
+/* ---------- Base typography ---------- */
+html, body {
+  font-family: 'Capriola', system-ui, sans-serif;
+  background-color: var(--color-white);
+  color: var(--color-deep-olive);
+}
+
+/* Monospace / technical text — Fira Code */
+.code-font,
+code,
+pre,
+kbd,
+samp {
+  font-family: 'Fira Code', 'JetBrains Mono', ui-monospace, monospace;
+}
+
+/* ---------- Brand surfaces ---------- */
 .bg-mesh {
   background-color: #f9fafb;
 }
 
-/* Glass panel — light version */
 .glass-panel {
   background: rgba(255, 255, 255, 0.85);
   backdrop-filter: blur(20px);
@@ -116,13 +147,74 @@
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
 }
 
-/* Input focus glow — indigo */
-.input-glow:focus-within {
-  box-shadow: 0 0 0 2px #4f46e5;
-  border-bottom-color: #4f46e5;
+/* ---------- Brand decorative elements ---------- */
+
+/* Hero title — Deep Olive → Soft Sage gradient */
+.brand-title-gradient {
+  background-image: linear-gradient(
+    135deg,
+    var(--color-deep-olive) 0%,
+    var(--color-deep-olive) 45%,
+    var(--color-soft-sage) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  -webkit-text-fill-color: transparent;
+  color: transparent;
 }
 
-/* Node canvas grid background — light */
+/* Soft Sage radial glow — anchored top-right, soft but well-spread */
+.sage-glow {
+  position: absolute;
+  top: -200px;
+  right: -200px;
+  left: auto;
+  width: 1000px;
+  height: 1000px;
+  pointer-events: none;
+  background: radial-gradient(
+    closest-side,
+    var(--color-soft-sage-glow-strong) 0%,
+    var(--color-soft-sage-glow-mid)    40%,
+    var(--color-soft-sage-glow-soft)   70%,
+    var(--color-soft-sage-glow-zero)   100%
+  );
+  z-index: 0;
+}
+
+/* SVG strokes used in marketing graph illustrations */
+.brand-edge {
+  stroke: var(--color-soft-sage);
+}
+
+/* Reusable focus ring for inputs (replaces inline #4f46e5 shadows) */
+.input-focus-ring:focus,
+.input-focus-ring:focus-visible {
+  outline: none;
+  box-shadow: 0 0 0 2px var(--color-deep-olive);
+  border-color: var(--color-deep-olive);
+}
+
+/* Login form inputs — soft drop shadow + Deep Olive focus ring */
+.brand-input {
+  transition: box-shadow 180ms ease;
+}
+.brand-input:focus,
+.brand-input:focus-visible {
+  outline: none;
+  border-color: transparent;
+  box-shadow:
+    0 2px 4px rgba(0, 0, 0, 0.05),
+    0 0 0 2px var(--color-deep-olive);
+}
+
+/* ---------- Form input glow ---------- */
+.input-glow:focus-within {
+  box-shadow: 0 0 0 2px var(--color-soft-sage);
+  border-bottom-color: var(--color-soft-sage);
+}
+
+/* ---------- Graph canvas ---------- */
 .node-canvas-bg {
   background-color: #f9fafb;
   background-image:
@@ -131,18 +223,18 @@
   background-size: 24px 24px;
 }
 
-/* Node cards — light */
+/* Node cards */
 .node-card {
-  background: #ffffff;
+  background: var(--color-white);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  border-top: 2px solid #4f46e5;
+  border-top: 2px solid var(--color-deep-olive);
   box-shadow: 0 2px 4px rgba(0, 0, 0, 0.05);
   transition: opacity 180ms ease, filter 180ms ease, transform 180ms ease, box-shadow 180ms ease;
 }
 
 .node-card.active {
-  border-color: #4f46e5;
-  box-shadow: 0 6px 18px rgba(79, 70, 229, 0.22);
+  border-color: var(--color-deep-olive);
+  box-shadow: 0 6px 18px color-mix(in srgb, var(--color-deep-olive) 22%, transparent);
   transform: scale(1.05);
   z-index: 2;
 }
@@ -181,7 +273,7 @@
 }
 
 .connection-line.active {
-  stroke: #4f46e5;
+  stroke: var(--color-deep-olive);
   stroke-width: 2;
 }
 
@@ -194,7 +286,7 @@
 }
 
 .connection-line.condition-loop {
-  stroke: #6366f1;
+  stroke: var(--color-soft-sage);
 }
 
 .connection-line.condition-error {
@@ -203,12 +295,7 @@
   opacity: 0.4;
 }
 
-/* Monospace code font */
-.code-font {
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-}
-
-/* Custom scrollbar — light */
+/* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: rgba(0, 0, 0, 0.1); border-radius: 3px; }
