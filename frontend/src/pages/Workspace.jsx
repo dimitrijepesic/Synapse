@@ -46,6 +46,33 @@ function getHandlePosition(node, handleType) {
 
 const HANDLE_GAP = 0;
 const EDGE_OFFSET = 40;
+const CORNER_RADIUS = 12;
+
+// Build an orthogonal path through `points` with rounded corners (quadratic Bézier).
+function roundedOrthoPath(points, radius = CORNER_RADIUS) {
+  if (points.length < 2) return '';
+  let d = `M ${points[0].x} ${points[0].y}`;
+  for (let i = 1; i < points.length - 1; i++) {
+    const prev = points[i - 1];
+    const curr = points[i];
+    const next = points[i + 1];
+    const dx1 = Math.sign(curr.x - prev.x);
+    const dy1 = Math.sign(curr.y - prev.y);
+    const dx2 = Math.sign(next.x - curr.x);
+    const dy2 = Math.sign(next.y - curr.y);
+    const lenIn = Math.hypot(curr.x - prev.x, curr.y - prev.y);
+    const lenOut = Math.hypot(next.x - curr.x, next.y - curr.y);
+    const r = Math.min(radius, lenIn / 2, lenOut / 2);
+    const ax = curr.x - dx1 * r;
+    const ay = curr.y - dy1 * r;
+    const bx = curr.x + dx2 * r;
+    const by = curr.y + dy2 * r;
+    d += ` L ${ax} ${ay} Q ${curr.x} ${curr.y} ${bx} ${by}`;
+  }
+  const last = points[points.length - 1];
+  d += ` L ${last.x} ${last.y}`;
+  return d;
+}
 
 function computeEdgePath(source, target) {
   const sx = source.x;
@@ -56,7 +83,12 @@ function computeEdgePath(source, target) {
   if (tx > sx + EDGE_OFFSET) {
     // Target is to the right — simple S-curve through midpoint
     const midX = Math.round((sx + tx) / 2);
-    return `M ${sx} ${sy} H ${midX} V ${ty} H ${tx}`;
+    return roundedOrthoPath([
+      { x: sx, y: sy },
+      { x: midX, y: sy },
+      { x: midX, y: ty },
+      { x: tx, y: ty },
+    ]);
   }
 
   // Target is behind or directly below/above — route around nodes
@@ -65,7 +97,14 @@ function computeEdgePath(source, target) {
   const bypassY = sy > ty
     ? Math.min(sy, ty) - EDGE_OFFSET
     : Math.max(sy, ty) + EDGE_OFFSET;
-  return `M ${sx} ${sy} H ${outX} V ${bypassY} H ${inX} V ${ty} H ${tx}`;
+  return roundedOrthoPath([
+    { x: sx, y: sy },
+    { x: outX, y: sy },
+    { x: outX, y: bypassY },
+    { x: inX, y: bypassY },
+    { x: inX, y: ty },
+    { x: tx, y: ty },
+  ]);
 }
 
 function computeArrowHead(target) {
