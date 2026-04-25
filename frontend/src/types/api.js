@@ -23,6 +23,9 @@
  * @property {string} target
  * @property {string} type
  * @property {number} weight
+ * @property {(string|null)} [condition]
+ * @property {('if_then'|'if_else'|'guard_else'|'switch_case'|null)} [branch_kind]
+ * @property {boolean} [synthetic]
  */
 
 /**

@@ -195,7 +195,7 @@ const useGraphStore = create((set, get) => ({
   // view is turned off.
   flatPositions: {},
 
-  // Filter state
+    // Filter state
   filters: {},
   filterOptions: null,
   filterLoading: false,
@@ -203,6 +203,12 @@ const useGraphStore = create((set, get) => ({
   // Stash the full unfiltered graph so we can restore when filters are cleared
   _unfilteredNodes: null,
   _unfilteredEdges: null,
+
+  // Per-view layout cache. Each top-level page (call-graph, control-flow) keeps
+  // its own positions so autoLayout/moveNode in one view doesn't disturb the
+  // other. activeView tracks which slice receives writes.
+  activeView: null,
+  viewLayouts: {},
 
   loadGraph: async (graphId) => {
     set({ loading: true, error: null });
@@ -308,6 +314,9 @@ const useGraphStore = create((set, get) => ({
         sourceHandle: 'output',
         targetHandle: 'input',
         weight: e.weight,
+        condition: e.condition || null,
+        branch_kind: e.branch_kind || null,
+        synthetic: e.synthetic || false,
       }));
 
       // Auto-layout (same BFS algorithm as mockData)
@@ -355,10 +364,38 @@ const useGraphStore = create((set, get) => ({
         sourceFiles,
         graphId: graphId,
         loading: false,
+        // New graph -> stale per-view caches, drop them so each view recomputes.
+        viewLayouts: {},
       });
     } catch (e) {
       set({ loading: false, error: e.message });
     }
+  },
+
+  // Page-mount hook: tell the store which view is active and apply its cached
+  // positions (or compute fresh if first visit).
+  enterView: (viewKey) => {
+    if (!viewKey) return;
+    const { viewLayouts, nodes, edges, activeView } = get();
+    if (activeView === viewKey && viewLayouts[viewKey]) {
+      // Already on this view with cached positions — nothing to do.
+      return;
+    }
+    const cached = viewLayouts[viewKey];
+    if (cached) {
+      set((state) => ({
+        activeView: viewKey,
+        nodes: state.nodes.map((n) => (cached[n.id] ? { ...n, position: cached[n.id] } : n)),
+      }));
+      return;
+    }
+    // First visit: compute layout for this view from current graph data.
+    const targets = _computeAutoLayoutTargets(nodes, edges);
+    set((state) => ({
+      activeView: viewKey,
+      nodes: state.nodes.map((n) => (targets[n.id] ? { ...n, position: targets[n.id] } : n)),
+      viewLayouts: { ...state.viewLayouts, [viewKey]: targets },
+    }));
   },
 
   selectNode: (id) => set({ selectedNodeId: id, selectedFile: null }),
@@ -392,11 +429,19 @@ const useGraphStore = create((set, get) => ({
     })),
 
   moveNode: (id, position) =>
-    set((state) => ({
-      nodes: state.nodes.map((n) =>
-        n.id === id ? { ...n, position } : n,
-      ),
-    })),
+    set((state) => {
+      const next = {
+        nodes: state.nodes.map((n) => (n.id === id ? { ...n, position } : n)),
+      };
+      if (state.activeView) {
+        const slice = state.viewLayouts[state.activeView] || {};
+        next.viewLayouts = {
+          ...state.viewLayouts,
+          [state.activeView]: { ...slice, [id]: position },
+        };
+      }
+      return next;
+    }),
 
   addEdge: (edge) =>
     set((state) => ({
@@ -631,9 +676,15 @@ const useGraphStore = create((set, get) => ({
       });
     }
 
+    const persistTargets = (state) => {
+      if (!state.activeView) return state.viewLayouts;
+      return { ...state.viewLayouts, [state.activeView]: { ...targets } };
+    };
+
     if (!animate) {
       set((state) => ({
         nodes: state.nodes.map((n) => (targets[n.id] ? { ...n, position: targets[n.id] } : n)),
+        viewLayouts: persistTargets(state),
       }));
       return;
     }
@@ -665,6 +716,7 @@ const useGraphStore = create((set, get) => ({
         layoutRaf = requestAnimationFrame(tick);
       } else {
         layoutRaf = null;
+        set((state) => ({ viewLayouts: persistTargets(state) }));
       }
     };
     layoutRaf = requestAnimationFrame(tick);

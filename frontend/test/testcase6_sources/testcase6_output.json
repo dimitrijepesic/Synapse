@@ -2,6 +2,70 @@
   "graph_id": "animal-shelter",
   "nodes": [
     {
+      "id": "func:Tests/ShelterTests.swift:ShelterTests.testAdopt:6",
+      "type": "function",
+      "qualified_name": "ShelterTests.testAdopt",
+      "name": "testAdopt",
+      "file": "Tests/ShelterTests.swift",
+      "line": 6,
+      "line_end": 11,
+      "signature": "func testAdopt() throws",
+      "params": [],
+      "return_type": null,
+      "container": "ShelterTests",
+      "in_degree": 0,
+      "out_degree": 3,
+      "category": "test"
+    },
+    {
+      "id": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
+      "type": "function",
+      "qualified_name": "ShelterTests.testGuideDog",
+      "name": "testGuideDog",
+      "file": "Tests/ShelterTests.swift",
+      "line": 13,
+      "line_end": 18,
+      "signature": "func testGuideDog()",
+      "params": [],
+      "return_type": null,
+      "container": "ShelterTests",
+      "in_degree": 0,
+      "out_degree": 4,
+      "category": "test"
+    },
+    {
+      "id": "func:Tests/ShelterTests.swift:ShelterTests.testRescue:20",
+      "type": "function",
+      "qualified_name": "ShelterTests.testRescue",
+      "name": "testRescue",
+      "file": "Tests/ShelterTests.swift",
+      "line": 20,
+      "line_end": 24,
+      "signature": "func testRescue() throws",
+      "params": [],
+      "return_type": null,
+      "container": "ShelterTests",
+      "in_degree": 0,
+      "out_degree": 3,
+      "category": "test"
+    },
+    {
+      "id": "func:Tests/ShelterTests.swift:ShelterTests.init:4",
+      "type": "function",
+      "qualified_name": "ShelterTests.init",
+      "name": "init",
+      "file": "Tests/ShelterTests.swift",
+      "line": 4,
+      "line_end": 4,
+      "signature": "init  // synthesized default init for class ShelterTests",
+      "params": [],
+      "return_type": "ShelterTests",
+      "container": "ShelterTests",
+      "in_degree": 0,
+      "out_degree": 0,
+      "category": "test"
+    },
+    {
       "id": "func:Sources/Animal.swift:Animal.speak:4",
       "type": "function",
       "qualified_name": "Animal.speak",
@@ -158,23 +222,65 @@
       "category": "source"
     },
     {
-      "id": "func:Sources/Shelter.swift:AdoptionError.init:3",
+      "id": "func:Sources/Animal.swift:Animal.init:3",
       "type": "function",
-      "qualified_name": "AdoptionError.init",
+      "qualified_name": "Animal.init",
       "name": "init",
-      "file": "Sources/Shelter.swift",
+      "file": "Sources/Animal.swift",
       "line": 3,
-      "line_end": 5,
-      "signature": "init(message: String)",
-      "params": [
-        {
-          "label": "message",
-          "name": "message",
-          "type": "String"
-        }
-      ],
-      "return_type": "AdoptionError",
-      "container": "AdoptionError",
+      "line_end": 3,
+      "signature": "init  // synthesized default init for class Animal",
+      "params": [],
+      "return_type": "Animal",
+      "container": "Animal",
+      "in_degree": 0,
+      "out_degree": 0,
+      "category": "source"
+    },
+    {
+      "id": "func:Sources/Animal.swift:Dog.init:14",
+      "type": "function",
+      "qualified_name": "Dog.init",
+      "name": "init",
+      "file": "Sources/Animal.swift",
+      "line": 14,
+      "line_end": 14,
+      "signature": "init  // synthesized default init for class Dog",
+      "params": [],
+      "return_type": "Dog",
+      "container": "Dog",
+      "in_degree": 2,
+      "out_degree": 0,
+      "category": "source"
+    },
+    {
+      "id": "func:Sources/Animal.swift:Cat.init:32",
+      "type": "function",
+      "qualified_name": "Cat.init",
+      "name": "init",
+      "file": "Sources/Animal.swift",
+      "line": 32,
+      "line_end": 32,
+      "signature": "init  // synthesized default init for class Cat",
+      "params": [],
+      "return_type": "Cat",
+      "container": "Cat",
+      "in_degree": 1,
+      "out_degree": 0,
+      "category": "source"
+    },
+    {
+      "id": "func:Sources/Animal.swift:GuideDog.init:44",
+      "type": "function",
+      "qualified_name": "GuideDog.init",
+      "name": "init",
+      "file": "Sources/Animal.swift",
+      "line": 44,
+      "line_end": 44,
+      "signature": "init  // synthesized default init for class GuideDog",
+      "params": [],
+      "return_type": "GuideDog",
+      "container": "GuideDog",
       "in_degree": 1,
       "out_degree": 0,
       "category": "source"
@@ -202,7 +308,7 @@
       "name": "adopt",
       "file": "Sources/Shelter.swift",
       "line": 13,
-      "line_end": 20,
+      "line_end": 21,
       "signature": "func adopt(_ animal: Animal) throws -> String",
       "params": [
         {
@@ -279,59 +385,103 @@
       "return_type": null,
       "container": null,
       "in_degree": 1,
-      "out_degree": 3,
+      "out_degree": 4,
       "category": "source"
     },
     {
-      "id": "func:Tests/ShelterTests.swift:ShelterTests.testAdopt:6",
+      "id": "func:Sources/Shelter.swift:AdoptionError.init:3",
       "type": "function",
-      "qualified_name": "ShelterTests.testAdopt",
-      "name": "testAdopt",
-      "file": "Tests/ShelterTests.swift",
-      "line": 6,
-      "line_end": 11,
-      "signature": "func testAdopt() throws",
+      "qualified_name": "AdoptionError.init",
+      "name": "init",
+      "file": "Sources/Shelter.swift",
+      "line": 3,
+      "line_end": 3,
+      "signature": "init  // synthesized default init for struct AdoptionError",
       "params": [],
-      "return_type": null,
-      "container": "ShelterTests",
-      "in_degree": 0,
-      "out_degree": 1,
-      "category": "test"
+      "return_type": "AdoptionError",
+      "container": "AdoptionError",
+      "in_degree": 1,
+      "out_degree": 0,
+      "category": "source"
     },
     {
-      "id": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
+      "id": "func:Sources/Shelter.swift:Shelter.init:7",
       "type": "function",
-      "qualified_name": "ShelterTests.testGuideDog",
-      "name": "testGuideDog",
-      "file": "Tests/ShelterTests.swift",
-      "line": 13,
-      "line_end": 18,
-      "signature": "func testGuideDog()",
+      "qualified_name": "Shelter.init",
+      "name": "init",
+      "file": "Sources/Shelter.swift",
+      "line": 7,
+      "line_end": 7,
+      "signature": "init  // synthesized default init for class Shelter",
       "params": [],
-      "return_type": null,
-      "container": "ShelterTests",
-      "in_degree": 0,
-      "out_degree": 3,
-      "category": "test"
-    },
-    {
-      "id": "func:Tests/ShelterTests.swift:ShelterTests.testRescue:20",
-      "type": "function",
-      "qualified_name": "ShelterTests.testRescue",
-      "name": "testRescue",
-      "file": "Tests/ShelterTests.swift",
-      "line": 20,
-      "line_end": 24,
-      "signature": "func testRescue() throws",
-      "params": [],
-      "return_type": null,
-      "container": "ShelterTests",
-      "in_degree": 0,
-      "out_degree": 1,
-      "category": "test"
+      "return_type": "Shelter",
+      "container": "Shelter",
+      "in_degree": 2,
+      "out_degree": 0,
+      "category": "source"
     }
   ],
   "edges": [
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testAdopt:6",
+      "target": "func:Sources/Animal.swift:Dog.init:14",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testAdopt:6",
+      "target": "func:Sources/Shelter.swift:Shelter.init:7",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testAdopt:6",
+      "target": "func:Sources/Shelter.swift:Shelter.adopt:13",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
+      "target": "func:Sources/Animal.swift:GuideDog.init:44",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
+      "target": "func:Sources/Animal.swift:GuideDog.guide:46",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
+      "target": "func:Sources/Animal.swift:Dog.fetch:20",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
+      "target": "func:Sources/Animal.swift:Dog.run:25",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testRescue:20",
+      "target": "func:Sources/Animal.swift:Cat.init:32",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testRescue:20",
+      "target": "func:Sources/Shelter.swift:Shelter.init:7",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Tests/ShelterTests.swift:ShelterTests.testRescue:20",
+      "target": "func:Sources/Shelter.swift:rescue:33",
+      "type": "calls",
+      "weight": 1
+    },
     {
       "source": "func:Sources/Animal.swift:Dog.fetch:20",
       "target": "func:Sources/Animal.swift:Dog.run:25",
@@ -396,7 +546,9 @@
       "source": "func:Sources/Shelter.swift:Shelter.adopt:13",
       "target": "func:Sources/Shelter.swift:AdoptionError.init:3",
       "type": "calls",
-      "weight": 1
+      "weight": 1,
+      "condition": "sound.count > 0",
+      "branch_kind": "guard_else"
     },
     {
       "source": "func:Sources/Shelter.swift:Shelter.adopt:13",
@@ -436,37 +588,13 @@
     },
     {
       "source": "func:Sources/Shelter.swift:rescue:33",
+      "target": "func:Sources/Animal.swift:Dog.init:14",
+      "type": "calls",
+      "weight": 1
+    },
+    {
+      "source": "func:Sources/Shelter.swift:rescue:33",
       "target": "func:Sources/Shelter.swift:Shelter.run:9",
-      "type": "calls",
-      "weight": 1
-    },
-    {
-      "source": "func:Tests/ShelterTests.swift:ShelterTests.testAdopt:6",
-      "target": "func:Sources/Shelter.swift:Shelter.adopt:13",
-      "type": "calls",
-      "weight": 1
-    },
-    {
-      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
-      "target": "func:Sources/Animal.swift:GuideDog.guide:46",
-      "type": "calls",
-      "weight": 1
-    },
-    {
-      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
-      "target": "func:Sources/Animal.swift:Dog.fetch:20",
-      "type": "calls",
-      "weight": 1
-    },
-    {
-      "source": "func:Tests/ShelterTests.swift:ShelterTests.testGuideDog:13",
-      "target": "func:Sources/Animal.swift:Dog.run:25",
-      "type": "calls",
-      "weight": 1
-    },
-    {
-      "source": "func:Tests/ShelterTests.swift:ShelterTests.testRescue:20",
-      "target": "func:Sources/Shelter.swift:rescue:33",
       "type": "calls",
       "weight": 1
     }

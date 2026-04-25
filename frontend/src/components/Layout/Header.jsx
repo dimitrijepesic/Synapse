@@ -6,8 +6,11 @@ export default function Header({ activePage }) {
 
   const navLinks = [
     { to: '/home', label: 'Dashboard', page: 'home' },
-    { to: '/workspace', label: 'Workspace', page: 'workspace' },
+    { to: '/workspace/call-graph', label: 'Call Graph', page: 'call-graph' },
+    { to: '/workspace/control-flow', label: 'Control Flow', page: 'control-flow' },
   ];
+
+  const isWorkspacePage = activePage === 'call-graph' || activePage === 'control-flow';
 
   return (
     <header className="fixed top-0 w-full z-50 bg-black/90 backdrop-blur-md border-b border-white/10">
@@ -44,7 +47,7 @@ export default function Header({ activePage }) {
           </nav>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
-          {activePage === 'workspace' && (
+          {isWorkspacePage && (
             <div className="hidden lg:flex items-center gap-2 mr-4 text-zinc-400 bg-white/10 px-3 py-1.5 rounded border border-white/10">
               <span className="material-symbols-outlined text-[16px]">search</span>
               <span className="font-label-sm text-xs">Search symbols...</span>
@@ -55,7 +58,7 @@ export default function Header({ activePage }) {
             to="/home"
             className="hidden sm:flex bg-white text-black px-3 sm:px-4 py-1.5 sm:py-2 rounded font-label-md text-label-md hover:bg-zinc-200 transition-colors active:scale-95 items-center gap-2 text-xs sm:text-sm"
           >
-            {activePage === 'workspace' && (
+            {isWorkspacePage && (
               <span className="material-symbols-outlined text-[18px]">add</span>
             )}
             Import

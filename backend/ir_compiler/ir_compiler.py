@@ -93,13 +93,19 @@ def build_call_graph(ir: dict) -> dict:
         if resolved_id is None:
             continue
 
-        key = (source_id, resolved_id)
+        condition = call.get("condition")
+        branch_kind = call.get("branch_kind")
+        key = (source_id, resolved_id, condition, branch_kind)
         edge_counts[key] = edge_counts.get(key, 0) + 1
 
-    edges = [
-        {"source": src, "target": dst, "type": "calls", "weight": weight}
-        for (src, dst), weight in edge_counts.items()
-    ]
+    edges = []
+    for (src, dst, condition, branch_kind), weight in edge_counts.items():
+        edge = {"source": src, "target": dst, "type": "calls", "weight": weight}
+        if condition is not None:
+            edge["condition"] = condition
+        if branch_kind is not None:
+            edge["branch_kind"] = branch_kind
+        edges.append(edge)
 
     node_map = {n["id"]: n for n in nodes}
     for edge in edges:

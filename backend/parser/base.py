@@ -14,6 +14,8 @@ class FunctionCall:
     receiver: str | None = None
     method: str = ""
     kind: str = "call"  # "call" | "method" | "initializer"
+    condition: str | None = None
+    branch_kind: str | None = None  # "if_then" | "if_else" | "guard_else" | "switch_case" | None
 
 @dataclass
 class FunctionInfo:

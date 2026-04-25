@@ -37,12 +37,34 @@ class SwiftParser(BaseParser):
             source = f.read()
         tree = self._parser.parse(source)
         result = FileResult(path=path)
-        self._walk(tree.root_node, source, result, current_class=None, current_fn=None)
+        self._walk(tree.root_node, source, result, current_class=None, current_fn=None, branch_stack=[])
+        self._synthesize_default_inits(result)
         return result
+
+    def _synthesize_default_inits(self, result: FileResult) -> None:
+        """Swift gives every struct/class a memberwise/default init even when
+        none is written. Add a stub FunctionInfo for each type without an
+        explicit init so calls like `AdoptionError(message: "x")` resolve."""
+        explicit = {fn.container for fn in result.functions if fn.name == "init" and fn.container}
+        for t in result.types:
+            if t.kind not in ("class", "struct"):
+                continue
+            if t.name in explicit:
+                continue
+            result.functions.append(FunctionInfo(
+                qualified_name=f"{t.name}.init",
+                name="init",
+                container=t.name,
+                line_start=t.line_start,
+                line_end=t.line_start,
+                signature=f"init  // synthesized default init for {t.kind} {t.name}",
+                params=[],
+                return_type=t.name,
+            ))
 
     # ---- main walk ----
 
-    def _walk(self, node, source, result, current_class, current_fn):
+    def _walk(self, node, source, result, current_class, current_fn, branch_stack):
         if node.type == "import_declaration":
             for child in node.children:
                 if child.type == "identifier":
@@ -63,7 +85,7 @@ class SwiftParser(BaseParser):
                     inherits=self._extract_inherits(node, source),
                 ))
             for child in node.children:
-                self._walk(child, source, result, current_class=name, current_fn=None)
+                self._walk(child, source, result, current_class=name, current_fn=None, branch_stack=[])
             return
 
         if node.type == "function_declaration":
@@ -71,7 +93,7 @@ class SwiftParser(BaseParser):
             if fn:
                 result.functions.append(fn)
                 for child in node.children:
-                    self._walk(child, source, result, current_class=current_class, current_fn=fn)
+                    self._walk(child, source, result, current_class=current_class, current_fn=fn, branch_stack=[])
             return
 
         if node.type == "init_declaration":
@@ -79,7 +101,7 @@ class SwiftParser(BaseParser):
             if fn:
                 result.functions.append(fn)
                 for child in node.children:
-                    self._walk(child, source, result, current_class=current_class, current_fn=fn)
+                    self._walk(child, source, result, current_class=current_class, current_fn=fn, branch_stack=[])
             return
 
         if node.type == "deinit_declaration":
@@ -87,12 +109,28 @@ class SwiftParser(BaseParser):
             if fn:
                 result.functions.append(fn)
                 for child in node.children:
-                    self._walk(child, source, result, current_class=current_class, current_fn=fn)
+                    self._walk(child, source, result, current_class=current_class, current_fn=fn, branch_stack=[])
+            return
+
+        if node.type == "if_statement" and current_fn:
+            self._walk_if(node, source, result, current_class, current_fn, branch_stack)
+            return
+
+        if node.type == "guard_statement" and current_fn:
+            self._walk_guard(node, source, result, current_class, current_fn, branch_stack)
+            return
+
+        if node.type == "switch_statement" and current_fn:
+            self._walk_switch(node, source, result, current_class, current_fn, branch_stack)
             return
 
         if node.type == "call_expression" and current_fn:
             call = self._extract_call(node, source)
             if call:
+                if branch_stack:
+                    cond, kind = branch_stack[-1]
+                    call.condition = cond
+                    call.branch_kind = kind
                 current_fn.calls.append(call)
             # Walk every child so we recurse into:
             #   - the callee subtree (for chained inner calls like a.b().c())
@@ -101,11 +139,137 @@ class SwiftParser(BaseParser):
             # Inner call_expression nodes have distinct byte ranges from this one,
             # so re-entering this branch won't double-count the outer call.
             for child in node.children:
-                self._walk(child, source, result, current_class=current_class, current_fn=current_fn)
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=branch_stack)
             return
 
         for child in node.children:
-            self._walk(child, source, result, current_class=current_class, current_fn=current_fn)
+            self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=branch_stack)
+
+    # ---- branch handlers ----
+
+    def _walk_if(self, node, source, result, current_class, current_fn, branch_stack):
+        children = list(node.children)
+        cond_text = self._slice_between(children, source, "if", "{")
+        then_stack = branch_stack + [(cond_text, "if_then")]
+
+        # Phases: 0 = before '{', 1 = then-body, 2 = else region
+        phase = 0
+        else_consumed_keyword = False
+        for child in children:
+            t = child.type
+            if phase == 0:
+                if t == "if":
+                    continue
+                if t == "{":
+                    phase = 1
+                    continue
+                # condition expression — uses outer stack
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=branch_stack)
+            elif phase == 1:
+                if t == "}":
+                    phase = 2
+                    continue
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=then_stack)
+            else:  # phase 2: else region
+                if t == "else":
+                    else_consumed_keyword = True
+                    continue
+                if not else_consumed_keyword:
+                    continue
+                if t == "if_statement":
+                    # else-if: innermost wins via stack ordering
+                    else_stack = branch_stack + [("else", "if_else")]
+                    self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=else_stack)
+                elif t == "{" or t == "}":
+                    continue
+                else:
+                    else_stack = branch_stack + [("else", "if_else")]
+                    self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=else_stack)
+
+    def _walk_guard(self, node, source, result, current_class, current_fn, branch_stack):
+        children = list(node.children)
+        cond_text = self._slice_between(children, source, "guard", "else")
+        else_stack = branch_stack + [(cond_text, "guard_else")]
+
+        phase = 0  # 0 = condition, 1 = else body
+        for child in children:
+            t = child.type
+            if phase == 0:
+                if t == "guard":
+                    continue
+                if t == "else":
+                    phase = 1
+                    continue
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=branch_stack)
+            else:
+                if t == "{" or t == "}":
+                    continue
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=else_stack)
+
+    def _walk_switch(self, node, source, result, current_class, current_fn, branch_stack):
+        seen_open = False
+        for child in node.children:
+            t = child.type
+            if t == "switch":
+                continue
+            if t == "{":
+                seen_open = True
+                continue
+            if t == "}":
+                continue
+            if not seen_open:
+                # subject expression — outer stack
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=branch_stack)
+            elif t == "switch_entry":
+                self._walk_switch_entry(child, source, result, current_class, current_fn, branch_stack)
+
+    def _walk_switch_entry(self, node, source, result, current_class, current_fn, branch_stack):
+        label = self._extract_switch_entry_label(node, source)
+        case_stack = branch_stack + [(label, "switch_case")]
+        seen_colon = False
+        for child in node.children:
+            if not seen_colon:
+                if child.type == ":":
+                    seen_colon = True
+                continue
+            self._walk(child, source, result, current_class=current_class, current_fn=current_fn, branch_stack=case_stack)
+
+    def _extract_switch_entry_label(self, node, source) -> str:
+        parts = []
+        is_default = False
+        seen_keyword = False
+        for child in node.children:
+            t = child.type
+            if t == "case":
+                seen_keyword = True
+                continue
+            if t == "default_keyword":
+                is_default = True
+                seen_keyword = True
+                continue
+            if t == ":":
+                break
+            if seen_keyword and t != ",":
+                txt = self._text(child, source).strip()
+                if txt:
+                    parts.append(txt)
+        if is_default:
+            return "default"
+        return ("case " + ", ".join(parts)).strip()
+
+    def _slice_between(self, children, source, start_type: str, end_type: str) -> str:
+        start = None
+        end = None
+        for child in children:
+            if start is None and child.type == start_type:
+                start = child.end_byte
+                continue
+            if start is not None and child.type == end_type:
+                end = child.start_byte
+                break
+        if start is None or end is None:
+            return ""
+        return " ".join(source[start:end].decode("utf-8").split())
 
     # ---- text helper ----
 

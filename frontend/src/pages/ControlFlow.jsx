@@ -5,7 +5,6 @@ import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
 import { defaultFileTree, SOURCE_FILES } from '../data/mockData';
 import { API_BASE, ENDPOINTS } from '../types/api';
-import { FilterPanel } from '../components/FilterPanel';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
@@ -17,13 +16,13 @@ const NODE_HEIGHT = 120;
 const isConstructor = (n) =>
   n.name === 'init' || /\binit\b/.test(n.signature || '') || n.icon === 'add_circle';
 const isDeadNode = (n) =>
-  (n.inDegree ?? 0) === 0 && n.category !== 'test' && !isConstructor(n) && !n.isHttpEndpoint;
+  (n.inDegree ?? 0) === 0 && n.category !== 'test' && !isConstructor(n);
 const isEntryNode = (n) => (n.inDegree ?? 0) === 0;
 const isLeafNode = (n) => (n.outDegree ?? 0) === 0;
 
 const CANVAS_FILTERS = [
   { id: 'dead', label: 'Dead', match: isDeadNode, dotClass: 'bg-rose-500' },
-  { id: 'entry', label: 'Entry', match: isEntryNode, dotClass: 'bg-deep-olive' },
+  { id: 'entry', label: 'Entry', match: isEntryNode, dotClass: 'bg-indigo-500' },
   { id: 'leaf', label: 'Leaf', match: isLeafNode, dotClass: 'bg-amber-500' },
 ];
 
@@ -144,10 +143,66 @@ function computeSelfLoopArrow(node) {
   return `M ${endX - s} ${top - s} L ${endX} ${top} L ${endX + s} ${top - s}`;
 }
 
-// --- Main Workspace ---
+// --- Branch-kind visual styling for Control Flow edges ---
 
-export default function Workspace() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, filters, filteredCounts } = useGraphStore();
+const BRANCH_STYLES = {
+  if_then:     { color: '#16a34a', label: 'if'    }, // green
+  if_else:     { color: '#dc2626', label: 'else'  }, // red
+  guard_else:  { color: '#ea580c', label: 'guard' }, // orange
+  switch_case: { color: '#2563eb', label: 'case'  }, // blue
+};
+
+function edgeStrokeStyle(edge) {
+  const s = edge.branch_kind ? BRANCH_STYLES[edge.branch_kind] : null;
+  if (!s) return undefined;
+  return { stroke: s.color, strokeWidth: 2 };
+}
+
+function midpointOf(from, to) {
+  return { x: (from.x + to.x) / 2, y: (from.y + to.y) / 2 };
+}
+
+function ConditionLabel({ from, to, edge }) {
+  if (!edge.condition) return null;
+  const { x, y } = midpointOf(from, to);
+  const color = edge.branch_kind ? BRANCH_STYLES[edge.branch_kind].color : '#374151';
+  const text = edge.condition;
+  // Estimate width crudely so background sits behind the text
+  const charW = 6.2;
+  const padX = 6;
+  const w = Math.max(28, text.length * charW + padX * 2);
+  const h = 18;
+  return (
+    <g pointerEvents="none">
+      <rect
+        x={x - w / 2}
+        y={y - h / 2}
+        width={w}
+        height={h}
+        rx={4}
+        ry={4}
+        fill="white"
+        stroke={color}
+        strokeWidth={1}
+        opacity={0.95}
+      />
+      <text
+        x={x}
+        y={y + 3.5}
+        textAnchor="middle"
+        fill={color}
+        style={{ fontSize: 11, fontFamily: 'inherit', fontWeight: 500 }}
+      >
+        {text}
+      </text>
+    </g>
+  );
+}
+
+// --- Main Control Flow page ---
+
+export default function ControlFlow() {
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -160,14 +215,13 @@ export default function Workspace() {
     }
   }, [searchParams]);
 
+  // Apply this view's cached layout (or compute fresh on first visit) so the
+  // control-flow layout stays independent of the call-graph page.
+  useEffect(() => {
+    enterView('control-flow');
+  }, [enterView, graphId]);
+
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
-
-  // Dead-node visibility: hidden by default, user can toggle to show
-  const [showDeadNodes, setShowDeadNodes] = useState(false);
-
-  // Filter panel state
-  const [filterPanelOpen, setFilterPanelOpen] = useState(false);
-  const activeFilterCount = Object.keys(filters).length;
 
   // Codebase overview state
   const [overview, setOverview] = useState(null);
@@ -262,11 +316,6 @@ export default function Workspace() {
     }
     return false;
   }, [classFilter]);
-
-  // Visible nodes: hide dead nodes unless toggled on
-  const visibleNodes = showDeadNodes ? nodes : nodes.filter((n) => !isDeadNode(n));
-  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
-  const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
 
   // --- Zoom / Pan state ---
   const canvasRef = useRef(null);
@@ -397,9 +446,9 @@ export default function Workspace() {
   if (graphLoading) {
     return (
       <div className="flex flex-col h-screen font-body-md text-body-md text-on-surface overflow-hidden items-center justify-center" style={{ backgroundColor: '#f9fafb' }}>
-        <Header activePage="workspace" />
+        <Header activePage="control-flow" />
         <div className="flex flex-col items-center gap-4 pt-20">
-          <span className="material-symbols-outlined text-[48px] text-deep-olive animate-spin">progress_activity</span>
+          <span className="material-symbols-outlined text-[48px] text-indigo-600 animate-spin">progress_activity</span>
           <p className="text-gray-600 text-lg">Loading graph...</p>
         </div>
       </div>
@@ -409,7 +458,7 @@ export default function Workspace() {
   if (graphError) {
     return (
       <div className="flex flex-col h-screen font-body-md text-body-md text-on-surface overflow-hidden items-center justify-center" style={{ backgroundColor: '#f9fafb' }}>
-        <Header activePage="workspace" />
+        <Header activePage="control-flow" />
         <div className="flex flex-col items-center gap-4 pt-20">
           <span className="material-symbols-outlined text-[48px] text-red-500">error</span>
           <p className="text-red-600 text-lg">{graphError}</p>
@@ -420,7 +469,7 @@ export default function Workspace() {
 
   return (
     <div className="flex flex-col h-screen font-body-md text-body-md text-on-surface overflow-hidden" style={{ backgroundColor: '#f9fafb' }}>
-      <Header activePage="workspace" />
+      <Header activePage="control-flow" />
 
       <div className="flex flex-1 pt-14 sm:pt-16 min-h-0 overflow-hidden">
         {/* Sidebar — icon rail + expandable explorer panel */}
@@ -497,27 +546,10 @@ export default function Workspace() {
               </span>
               <span className="font-label-sm">{clusterView ? 'Packaged' : 'Packages'}</span>
             </button>
-            <button
-              onClick={() => setShowDeadNodes((v) => !v)}
-              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
-                showDeadNodes
-                  ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-700 shadow-sm'
-                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
-              }`}
-              title={showDeadNodes ? 'Hide dead nodes' : `Show dead nodes (${nodes.filter(isDeadNode).length} hidden)`}
-            >
-              <span className="material-symbols-outlined text-[16px]">
-                {showDeadNodes ? 'visibility' : 'visibility_off'}
-              </span>
-              <span className="font-label-sm">Dead</span>
-              <span className={`text-[10px] ${showDeadNodes ? 'text-white/70' : 'text-gray-400'}`}>
-                {nodes.filter(isDeadNode).length}
-              </span>
-            </button>
             <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
               {CANVAS_FILTERS.map((f) => {
                 const on = classFilter.has(f.id);
-                const count = visibleNodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
+                const count = nodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
                 return (
                   <button
                     key={f.id}
@@ -545,30 +577,14 @@ export default function Workspace() {
                 </button>
               )}
             </div>
-            <button
-              onClick={() => setFilterPanelOpen((v) => !v)}
-              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
-                filterPanelOpen || activeFilterCount > 0
-                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
-                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
-              }`}
-              title="Filter graph nodes"
-            >
-              <span className="material-symbols-outlined text-[16px]">filter_list</span>
-              <span className="font-label-sm">Filter</span>
-              {activeFilterCount > 0 && (
-                <span className={`text-[10px] px-1.5 py-0.5 rounded-full font-medium ${
-                  filterPanelOpen ? 'bg-white/20 text-white' : 'bg-indigo-100 text-indigo-700'
-                }`}>
-                  {activeFilterCount}
+            <div className="glass-panel rounded-lg px-2 py-1 flex items-center gap-2" title="Branch kinds">
+              {Object.entries(BRANCH_STYLES).map(([kind, s]) => (
+                <span key={kind} className="flex items-center gap-1 text-[11px] text-gray-600">
+                  <span className="inline-block w-2.5 h-0.5 rounded" style={{ backgroundColor: s.color }} />
+                  <span className="font-label-sm">{s.label}</span>
                 </span>
-              )}
-            </button>
-            {filteredCounts && (
-              <span className="text-[11px] text-gray-500 font-label-sm self-center">
-                {filteredCounts.filtered_nodes}/{filteredCounts.total_nodes} nodes
-              </span>
-            )}
+              ))}
+            </div>
           </div>
 
           {/* Canvas */}
@@ -621,15 +637,16 @@ export default function Workspace() {
                     })}
 
                     {/* Edges between nodes in expanded clusters */}
-                    {visibleEdges.map((edge) => {
+                    {edges.map((edge) => {
                       const srcCluster = nodeClusterMap[edge.source];
                       const tgtCluster = nodeClusterMap[edge.target];
+                      // Only show node-level edges if both ends are in expanded clusters
                       const srcExpanded = srcCluster && expandedClusters.has(srcCluster);
                       const tgtExpanded = tgtCluster && expandedClusters.has(tgtCluster);
                       if (!srcExpanded && !tgtExpanded) return null;
 
-                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
-                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
+                      const sourceNode = nodes.find((n) => n.id === edge.source);
+                      const targetNode = nodes.find((n) => n.id === edge.target);
                       if (!sourceNode || !targetNode) return null;
 
                       if (edge.source === edge.target) {
@@ -644,8 +661,9 @@ export default function Workspace() {
                       const to = getHandlePosition(targetNode, edge.targetHandle);
                       return (
                         <g key={edge.id}>
-                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeEdgePath(from, to)} />
-                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeArrowHead(to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} style={edgeStrokeStyle(edge)} d={computeEdgePath(from, to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} style={edgeStrokeStyle(edge)} d={computeArrowHead(to)} />
+                          <ConditionLabel from={from} to={to} edge={edge} />
                         </g>
                       );
                     })}
@@ -667,18 +685,19 @@ export default function Workspace() {
                     );
                   })}
 
-                  {/* Nodes inside expanded clusters — compact mode */}
-                  {visibleNodes.map((node) => {
+                  {/* Nodes inside expanded clusters */}
+                  {nodes.map((node) => {
                     const clusterId = nodeClusterMap[node.id];
                     if (!clusterId || !expandedClusters.has(clusterId)) return null;
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
                     const dimByFilter = !matchesClassFilter(node);
                     return (
-                      <CompactNodeCard
+                      <NodeCard
                         key={node.id}
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
+                        edges={edges}
                         onSelect={() => selectNode(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
@@ -692,9 +711,9 @@ export default function Workspace() {
 
                   {/* SVG edges */}
                   <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
-                    {visibleEdges.map((edge) => {
-                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
-                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
+                    {edges.map((edge) => {
+                      const sourceNode = nodes.find((n) => n.id === edge.source);
+                      const targetNode = nodes.find((n) => n.id === edge.target);
                       if (!sourceNode || !targetNode) return null;
                       if (edge.source === edge.target) {
                         return (
@@ -708,15 +727,16 @@ export default function Workspace() {
                       const to = getHandlePosition(targetNode, edge.targetHandle);
                       return (
                         <g key={edge.id}>
-                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeEdgePath(from, to)} />
-                          <path className={getEdgeClasses(edge, selectedNodeId)} d={computeArrowHead(to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} style={edgeStrokeStyle(edge)} d={computeEdgePath(from, to)} />
+                          <path className={getEdgeClasses(edge, selectedNodeId)} style={edgeStrokeStyle(edge)} d={computeArrowHead(to)} />
+                          <ConditionLabel from={from} to={to} edge={edge} />
                         </g>
                       );
                     })}
                   </svg>
 
                   {/* Nodes */}
-                  {visibleNodes.map((node) => {
+                  {nodes.map((node) => {
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
                     const dimByFilter = !matchesClassFilter(node);
                     return (
@@ -725,7 +745,7 @@ export default function Workspace() {
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={visibleEdges}
+                        edges={edges}
                         onSelect={() => selectNode(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
@@ -738,7 +758,7 @@ export default function Workspace() {
 
             {/* Minimap — stays fixed in viewport */}
             <Minimap
-              nodes={visibleNodes}
+              nodes={nodes}
               selectedNodeId={selectedNodeId}
               zoom={zoom}
               pan={pan}
@@ -768,9 +788,6 @@ export default function Workspace() {
             open={ui.codePanelOpen && !!selectedNode}
             onClose={toggleCodePanel}
           />
-
-          {/* Filter Panel */}
-          <FilterPanel open={filterPanelOpen} onClose={() => setFilterPanelOpen(false)} />
 
           {/* Reopen button — top-right, visible when a node is selected but panel is closed */}
           {selectedNode && !ui.codePanelOpen && (
@@ -978,8 +995,8 @@ function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNo
               onClick={() => onTabChange(tab.id)}
               className={`w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded transition-all duration-100 ease-in group ${
                 activeTab === tab.id
-                  ? 'text-deep-olive bg-soft-sage/20'
-                  : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
+                  ? 'text-indigo-600 bg-indigo-50'
+                  : 'text-gray-400 hover:bg-indigo-50 hover:text-indigo-600'
               }`}
               title={tab.label}
             >
@@ -996,7 +1013,7 @@ function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNo
           ))}
           <button
             onClick={onNewNode}
-            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mt-2 md:mt-4 rounded-full bg-deep-olive text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-sm"
+            className="w-7 h-7 sm:w-8 sm:h-8 md:w-10 md:h-10 mt-2 md:mt-4 rounded-full bg-indigo-600 text-white flex items-center justify-center hover:scale-105 active:scale-95 transition-all shadow-sm"
             title="New Node"
           >
             <span className="material-symbols-outlined text-[16px] sm:text-[18px] md:text-[24px]">add</span>
@@ -1005,16 +1022,16 @@ function SideNav({ project, activeTab, onTabChange, onNewNode, nodes, selectedNo
 
         {/* Bottom — settings, help, project */}
         <div className="flex flex-col items-center w-full gap-1 md:gap-2 px-0.5 sm:px-1 md:px-2 mt-auto">
-          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive transition-all duration-100 ease-in group" title="Settings">
+          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-100 ease-in group" title="Settings">
             <span className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] group-hover:scale-110 transition-transform">settings</span>
           </button>
-          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive transition-all duration-100 ease-in group" title="Help">
+          <button className="w-full flex flex-col items-center py-1.5 sm:py-2 md:py-3 rounded text-gray-400 hover:bg-indigo-50 hover:text-indigo-600 transition-all duration-100 ease-in group" title="Help">
             <span className="material-symbols-outlined text-[18px] sm:text-[20px] md:text-[24px] group-hover:scale-110 transition-transform">help_outline</span>
           </button>
           {/* Project badge */}
           <div className="flex flex-col items-center w-full mt-2 md:mt-3 pt-2 md:pt-3 border-t border-gray-200">
-            <div className="w-7 sm:w-8 md:w-10 h-7 sm:h-8 md:h-10 rounded bg-soft-sage/20 flex items-center justify-center border border-soft-sage mb-1">
-              <span className="text-xs sm:text-sm md:text-lg font-black text-deep-olive">
+            <div className="w-7 sm:w-8 md:w-10 h-7 sm:h-8 md:h-10 rounded bg-indigo-50 flex items-center justify-center border border-indigo-200 mb-1">
+              <span className="text-xs sm:text-sm md:text-lg font-black text-indigo-600">
                 {project.name.charAt(0).toLowerCase()}
               </span>
             </div>
@@ -1203,7 +1220,7 @@ function FunctionFileGroup({ file, containers, selectedNodeId, onSelect, default
         >
           expand_more
         </span>
-        <span className={`material-symbols-outlined text-[14px] shrink-0 ${isTestFile ? 'text-green-600' : 'text-deep-olive'}`}>
+        <span className={`material-symbols-outlined text-[14px] shrink-0 ${isTestFile ? 'text-green-600' : 'text-indigo-500'}`}>
           {isTestFile ? 'science' : 'description'}
         </span>
         <span className="truncate flex-1 text-[12px]" title={file}>{fileName}</span>
@@ -1277,7 +1294,7 @@ function FunctionRow({ node, active, onSelect }) {
       ref={ref}
       onClick={() => onSelect(node.id)}
       className={`w-full flex items-center gap-1.5 py-[4px] pl-12 pr-2 text-left transition-colors group ${
-        active ? 'bg-soft-sage/20 text-deep-olive' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
+        active ? 'bg-indigo-50 text-gray-900' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
       }`}
     >
       <span className={`material-symbols-outlined text-[12px] shrink-0 ${active ? 'text-primary' : 'text-gray-400'}`}>
@@ -1490,14 +1507,6 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
               TEST
             </span>
           )}
-          {node.isHttpEndpoint && (
-            <span
-              className="px-1.5 py-0.5 rounded bg-sky-50 text-[9px] font-label-sm text-sky-700 border border-sky-200"
-              title="HTTP endpoint — called externally via HTTP"
-            >
-              HTTP
-            </span>
-          )}
           {isDead && (
             <span
               className="px-1.5 py-0.5 rounded bg-rose-50 text-[9px] font-label-sm text-rose-700 border border-rose-200"
@@ -1528,76 +1537,6 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
         </div>
       </div>
 
-    </div>
-  );
-}
-
-// --- Compact Node Card (for inside clusters) ---
-
-const COMPACT_NODE_WIDTH = 200;
-const COMPACT_NODE_HEIGHT = 150;
-
-function CompactNodeCard({ node, isSelected, isDimmed = false, onSelect, onMove, zoom = 1 }) {
-  const handleMouseDown = useCallback(
-    (e) => {
-      if (e.button !== 0) return;
-      e.preventDefault();
-      e.stopPropagation();
-      onSelect();
-      const startX = e.clientX;
-      const startY = e.clientY;
-      const startPos = { ...node.position };
-      const onMouseMove = (ev) => {
-        onMove({
-          x: startPos.x + (ev.clientX - startX) / zoom,
-          y: startPos.y + (ev.clientY - startY) / zoom,
-        });
-      };
-      const onMouseUp = () => {
-        document.removeEventListener('mousemove', onMouseMove);
-        document.removeEventListener('mouseup', onMouseUp);
-      };
-      document.addEventListener('mousemove', onMouseMove);
-      document.addEventListener('mouseup', onMouseUp);
-    },
-    [node.position, onSelect, onMove, zoom],
-  );
-
-  const iconColor = isSelected ? 'text-primary' : 'text-gray-500';
-
-  return (
-    <div
-      className="absolute z-10"
-      style={{
-        top: node.position.y,
-        left: node.position.x,
-        width: COMPACT_NODE_WIDTH,
-        height: COMPACT_NODE_HEIGHT,
-      }}
-    >
-      <div
-        className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} rounded px-2.5 py-2 cursor-move h-full overflow-hidden`}
-        onMouseDown={handleMouseDown}
-      >
-        <div className="flex items-center gap-1.5">
-          <span className={`material-symbols-outlined text-[14px] ${iconColor}`}>{node.icon}</span>
-          <span className="font-body-md text-gray-900 truncate text-[13px] flex-1" title={node.qualifiedName || node.functionName}>
-            {node.functionName}
-          </span>
-          {isSelected && (
-            <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
-          )}
-        </div>
-        <div className="mt-1 flex items-center gap-1 text-[9px] text-gray-400">
-          <span>
-            {node.container ? `${node.container}` : node.filePath.split('/').pop()}
-          </span>
-          <span className="ml-auto font-label-sm flex items-center gap-0.5">
-            <span>←{node.inDegree ?? 0}</span>
-            <span>→{node.outDegree ?? 0}</span>
-          </span>
-        </div>
-      </div>
     </div>
   );
 }
@@ -2027,14 +1966,14 @@ function FileOverlay({ file, nodes, sourceFiles: dynamicSources, onClose, onJump
       </div>
 
       {/* Directions banner */}
-      <div className="px-4 py-2 bg-soft-sage/20 border-b border-soft-sage flex items-start gap-2 shrink-0">
-        <span className="material-symbols-outlined text-[15px] text-deep-olive mt-0.5 shrink-0">tips_and_updates</span>
-        <div className="text-[12px] text-deep-olive leading-snug">
+      <div className="px-4 py-2 bg-indigo-50 border-b border-indigo-100 flex items-start gap-2 shrink-0">
+        <span className="material-symbols-outlined text-[15px] text-indigo-500 mt-0.5 shrink-0">tips_and_updates</span>
+        <div className="text-[12px] text-indigo-900 leading-snug">
           <strong>File view.</strong>{' '}
           Click a function chip to jump back to the canvas, or any{' '}
           <span className="code-font">L42</span> to scroll its definition into view.{' '}
-          <span className="text-soft-sage">▸</span> markers in the gutter mark where each function starts.{' '}
-          Press <span className="code-font px-1 rounded bg-soft-sage/30">Esc</span> or the{' '}
+          <span className="text-indigo-400">▸</span> markers in the gutter mark where each function starts.{' '}
+          Press <span className="code-font px-1 rounded bg-indigo-100">Esc</span> or the{' '}
           <span className="code-font">×</span> above to return to the graph.
         </div>
       </div>
@@ -2224,8 +2163,8 @@ function CodeView({ code, startLine, highlightLine: hlLine, markerLines }) {
           const isHl = ln === hlLine;
           const isMarker = markers.has(ln);
           return (
-            <span key={i} className={isHl ? 'text-primary font-semibold' : isMarker ? 'text-deep-olive' : ''}>
-              {isMarker && !isHl ? <span className="text-soft-sage mr-0.5">▸</span> : null}
+            <span key={i} className={isHl ? 'text-primary font-semibold' : isMarker ? 'text-indigo-500' : ''}>
+              {isMarker && !isHl ? <span className="text-indigo-400 mr-0.5">▸</span> : null}
               {ln}
             </span>
           );
@@ -2238,7 +2177,7 @@ function CodeView({ code, startLine, highlightLine: hlLine, markerLines }) {
           const isMarker = markers.has(ln);
           let cls = '';
           if (isHl) cls = 'bg-primary/10 -ml-4 pl-4 border-l-2 border-primary';
-          else if (isMarker) cls = 'bg-soft-sage/15 -ml-4 pl-4 border-l-2 border-soft-sage';
+          else if (isMarker) cls = 'bg-indigo-50/40 -ml-4 pl-4 border-l-2 border-indigo-200';
           return (
             <div key={i} data-line={ln} className={cls}>
               {line
@@ -2434,7 +2373,7 @@ function NodeEditorPanel({ existingNodes, onClose, onSubmit }) {
         <button
           onClick={handleSubmit}
           disabled={!form.functionName.trim()}
-          className="px-3 py-1.5 rounded bg-primary text-white text-xs font-label-sm hover:bg-deep-olive/90 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
+          className="px-3 py-1.5 rounded bg-primary text-white text-xs font-label-sm hover:bg-indigo-700 transition-colors shadow-sm disabled:opacity-40 disabled:cursor-not-allowed"
         >
           Create Node
         </button>
@@ -2529,7 +2468,7 @@ function TreeFileWithFunctions({ name, fullPath, depth, functions, selectedNodeI
     <div>
       <div
         className={`relative w-full flex items-center gap-1 transition-colors ${
-          fileActive ? 'bg-soft-sage/20 text-deep-olive' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+          fileActive ? 'bg-indigo-50 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
         }`}
         style={{ paddingLeft: pad }}
       >
@@ -2588,7 +2527,7 @@ function FileFunctionRow({ node, depth, active, onSelect }) {
       ref={ref}
       onClick={onSelect ? () => onSelect(node.id) : undefined}
       className={`relative w-full flex items-center gap-1.5 py-[3px] text-left transition-colors ${
-        active ? 'bg-soft-sage/20 text-deep-olive' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
+        active ? 'bg-indigo-50 text-gray-900' : 'text-gray-500 hover:bg-gray-100 hover:text-gray-900'
       }`}
       style={{ paddingLeft: pad }}
     >
@@ -2709,7 +2648,7 @@ function TreeFile({ name, active, onClick, depth = 0 }) {
   return (
     <button
       className={`relative w-full flex items-center gap-1.5 py-[5px] text-left transition-colors ${
-        active ? 'text-deep-olive bg-soft-sage/20' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
+        active ? 'text-gray-900 bg-indigo-50' : 'text-gray-500 hover:text-gray-900 hover:bg-gray-100'
       }`}
       style={{ paddingLeft: pad }}
       onClick={onClick}
@@ -2789,7 +2728,7 @@ function Minimap({ nodes, selectedNodeId, zoom, pan, canvasSize, onNavigate }) {
         ))}
         {/* Viewport indicator */}
         <div
-          className="absolute border border-gray-400 bg-soft-sage/15 pointer-events-none"
+          className="absolute border border-gray-400 bg-indigo-50/30 pointer-events-none"
           style={{
             left: vpLeft,
             top: vpTop,
