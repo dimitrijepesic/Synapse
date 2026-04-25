@@ -394,8 +394,8 @@ def save_graph(graph: dict, path: str = "backend/cached/katana.graph.json") -> N
 if __name__ == "__main__":
     import os
 
-    ir_path = os.path.join(os.path.dirname(__file__), "..", "tests", "parser_tests", "test3_output.json")
-    out_path = os.path.join(os.path.dirname(__file__), "..", "tests", "ir_compiler_tests", "external_test3_output.json")
+    ir_path = os.path.join(os.path.dirname(__file__), "..", "tests", "parser_tests", "output.json")
+    out_path = os.path.join(os.path.dirname(__file__), "..", "tests", "ir_compiler_tests", "normal_output.json")
     with open(ir_path) as f:
         ir = json.load(f)
 
