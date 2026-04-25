@@ -4,6 +4,7 @@ import { Header } from '../components/Layout';
 import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
 import { defaultFileTree, SOURCE_FILES } from '../data/mockData';
+import { API_BASE, ENDPOINTS } from '../types/api';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
@@ -943,7 +944,7 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
             <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(79,70,229,0.4)] shrink-0" />
           )}
         </div>
-        <div className="font-body-md text-gray-900 truncate text-[14px]" title={node.qualifiedName || node.functionName}>
+        <div className="font-body-md text-gray-900 truncate text-[16px]" title={node.qualifiedName || node.functionName}>
           {node.container ? (
             <>
               <span className="text-gray-400">{node.container}.</span>
@@ -999,8 +1000,38 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
 function CodePanel({ node, open, onClose }) {
   const [width, setWidth] = useState(384); // w-96 = 384px
   const [dragging, setDragging] = useState(false);
+  const [summary, setSummary] = useState(null);
+  const [summaryLoading, setSummaryLoading] = useState(false);
+  const [summaryError, setSummaryError] = useState(null);
   const MIN_W = 280;
   const MAX_W = 700;
+
+  // Reset summary when the selected node changes
+  useEffect(() => {
+    setSummary(null);
+    setSummaryError(null);
+    setSummaryLoading(false);
+  }, [node?.id]);
+
+  const handleSummarize = useCallback(async () => {
+    if (!node?.id) return;
+    setSummaryLoading(true);
+    setSummaryError(null);
+    try {
+      const res = await fetch(`${API_BASE}${ENDPOINTS.llmExplain}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ node_id: node.id }),
+      });
+      if (!res.ok) throw new Error(`Request failed: ${res.status}`);
+      const data = await res.json();
+      setSummary(data.explanation || '(empty response)');
+    } catch (err) {
+      setSummaryError(err.message || 'Failed to summarize');
+    } finally {
+      setSummaryLoading(false);
+    }
+  }, [node?.id]);
 
   const handleResizeStart = useCallback((e) => {
     e.preventDefault();
@@ -1057,15 +1088,33 @@ function CodePanel({ node, open, onClose }) {
       <div className="border-b border-gray-200 bg-white flex flex-col shrink-0">
         <div className="px-4 py-2 border-b border-gray-100 flex justify-between items-center">
           <span className="font-label-sm text-gray-500 uppercase tracking-wider text-[10px]">Node Analysis</span>
-          <button className="flex items-center gap-1 text-[10px] font-label-sm text-primary hover:text-gray-900 transition-colors bg-primary/10 px-2 py-1 rounded border border-primary/20">
-            <span className="material-symbols-outlined text-[12px]">auto_awesome</span>
-            Summarize
+          <button
+            onClick={handleSummarize}
+            disabled={!node || summaryLoading}
+            className="flex items-center gap-1 text-[10px] font-label-sm text-primary hover:text-gray-900 transition-colors bg-primary/10 px-2 py-1 rounded border border-primary/20 disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            <span className={`material-symbols-outlined text-[12px] ${summaryLoading ? 'animate-spin' : ''}`}>
+              {summaryLoading ? 'progress_activity' : 'auto_awesome'}
+            </span>
+            {summaryLoading ? 'Summarizing…' : 'Summarize'}
           </button>
         </div>
         <div className="p-4">
           {node && node.analysis ? (
             <>
               <p className="font-body-md text-sm text-gray-500 mb-3">{node.analysis.description}</p>
+              {summaryError && (
+                <p className="font-body-md text-sm text-rose-600 mb-3">{summaryError}</p>
+              )}
+              {summary && (
+                <div className="mb-3 px-3 py-2 rounded bg-primary/5 border border-primary/20">
+                  <div className="flex items-center gap-1 mb-1.5">
+                    <span className="material-symbols-outlined text-[12px] text-primary">auto_awesome</span>
+                    <span className="font-label-sm text-[10px] text-primary uppercase tracking-wider">AI Summary</span>
+                  </div>
+                  <p className="font-body-md text-sm text-gray-700 whitespace-pre-wrap">{summary}</p>
+                </div>
+              )}
               {node.signature && (
                 <div className="mb-3 px-2 py-1.5 rounded bg-gray-50 border border-gray-200 code-font text-[11px] text-gray-700 break-all">
                   {node.signature}
