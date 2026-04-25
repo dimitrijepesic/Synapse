@@ -46,9 +46,9 @@ class SwiftParser(BaseParser):
         if node.type == "import_declaration":
             for child in node.children:
                 if child.type == "identifier":
-                    for sub in child.children:
-                        if sub.type == "simple_identifier":
-                            result.imports.append(self._text(sub, source))
+                    # Take the full dotted path (e.g. "os.signpost") as a single import,
+                    # not each simple_identifier component separately.
+                    result.imports.append(self._text(child, source).strip())
             return
 
         if node.type in CONTAINER_TYPES:
@@ -94,14 +94,14 @@ class SwiftParser(BaseParser):
             call = self._extract_call(node, source)
             if call:
                 current_fn.calls.append(call)
+            # Walk every child so we recurse into:
+            #   - the callee subtree (for chained inner calls like a.b().c())
+            #   - argument subtrees (for calls inside non-closure args like dispatch(Foo()))
+            #   - closure bodies inside arguments
+            # Inner call_expression nodes have distinct byte ranges from this one,
+            # so re-entering this branch won't double-count the outer call.
             for child in node.children:
-                if child.type in ("closure_expression", "function_body",
-                                  "trailing_closure", "lambda_literal"):
-                    self._walk(child, source, result, current_class=current_class, current_fn=current_fn)
-                elif child.type == "call_suffix":
-                    for sc in child.children:
-                        if sc.type in ("lambda_literal", "trailing_closure", "closure_expression"):
-                            self._walk(sc, source, result, current_class=current_class, current_fn=current_fn)
+                self._walk(child, source, result, current_class=current_class, current_fn=current_fn)
             return
 
         for child in node.children:

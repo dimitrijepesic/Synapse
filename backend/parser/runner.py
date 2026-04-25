@@ -37,7 +37,23 @@ def parse_repo(repo_path: str, repo_name: str = "", language: str = "swift") -> 
                 print(f"[warn] skipping {full_path}: {e}")
 
     merged = merge(results)
+    _refine_call_kinds(merged)
     return _to_dict(merged)
+
+
+def _refine_call_kinds(result: ParseResult) -> None:
+    """Demote 'initializer' calls whose target isn't a known type to 'call'.
+
+    The Swift parser tags any bare PascalCase callee as 'initializer' on a guess.
+    Once we have the full corpus we can check the union of declared types and
+    fix the false positives (XCTAssertEqual, XCTAssertNotNil, etc.).
+    """
+    known_types = {t.name for f in result.files for t in f.types}
+    for f in result.files:
+        for fn in f.functions:
+            for c in fn.calls:
+                if c.kind == "initializer" and c.target not in known_types:
+                    c.kind = "call"
 
 
 def parse_file(file_path: str, repo_name: str = "") -> dict:
@@ -52,6 +68,7 @@ def parse_file(file_path: str, repo_name: str = "") -> dict:
         repo=repo_name,
         files=[file_result]
     )
+    _refine_call_kinds(result)
     return _to_dict(result)
 
 

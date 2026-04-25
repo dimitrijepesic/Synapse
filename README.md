@@ -1,68 +1,109 @@
-# CodeGraph
+# Synapsis
 
-Interactive AST-based call-graph explorer. Import a codebase, see which functions call which (and under what conditions), click to read code + AI summaries, and add new nodes to plan changes.
+Interactive call-graph explorer for Swift codebases. Map every function, every call, every dependency — then click any node to read the source, ask the AI what it does, or predict what breaks if you change it.
 
 ## How It Works
 
-1. **Import** a repo (GitHub URL or local upload)
-2. **tree-sitter** parses the AST across Python, JS/TS, Java, Go
-3. **Call graph** is built — nodes are functions, edges are calls, labeled with conditions (if/else/for/try)
-4. **Interactive visualization** — explore the graph, click nodes to see source code
-5. **AI summaries** — Gemini 2.5 explains what each function does in context
-6. **Modify** — add nodes manually or describe changes to AI, see the updated graph, run tests
+1. **Import** a Swift codebase from GitHub
+2. **tree-sitter** parses the source via a pluggable language registry (Swift today, more languages drop in)
+3. **Call graph** is built from the parsed IR — nodes are functions, edges are calls
+4. **Interactive visualization** — explore the graph, click nodes to see source code and neighbors
+5. **AI summaries** — Groq (Llama 3.3 70B) explains individual functions, summarizes the codebase, narrates impact predictions
+6. **Deterministic queries** — predict impact, find hotspots and dead code with zero LLM calls
 
 ## Tech Stack
 
 | Layer | Tech |
 |-------|------|
 | Frontend | React + Vite + JavaScript |
-| Graph Viz | @xyflow/react |
-| State | Zustand + TanStack Query |
-| Backend | Flask (Python) |
-| AST | tree-sitter (multi-language) |
-| AI | Gemini 2.5 Flash |
-| Storage | Filesystem (no database) |
+| Graph viz | @xyflow/react |
+| Frontend state | Zustand + TanStack Query |
+| Backend | FastAPI (Python 3.12) |
+| AST parsing | tree-sitter (Swift now, multi-language pluggable) |
+| LLM | Groq (Llama 3.3 70B) via OpenAI-compatible SDK |
+| LLM cache | SQLite |
+| Storage | Filesystem (cloned repos in temp dirs, graphs as JSON) |
 
 ## Project Structure
 
 ```
-backend/          Flask API + AST engine
+backend/
+  api/                    FastAPI app + endpoints
   app/
-    routes/       REST endpoints
-    services/     AST parser, call graph, AI, GitHub client
-    models/       Shared data models (Node, Edge, Graph)
-frontend/         React app
+    services/             ir_compiler (IR → graph), ai_service (LLM)
+  parser/                 tree-sitter parsing (Swift, multi-language registry)
+  tests/
+    parser_tests/         parser test fixtures
+    ir_compiler_tests/    IR-to-graph test fixtures
+frontend/
   src/
-    components/   GraphView, CodePanel, ImportDialog, NodeEditor, Layout
-    api/          Backend fetch wrappers
-    store/        Zustand stores
-    hooks/        Caching, layout
-    types/        API type reference (JSDoc)
-    mocks/        Mock data for frontend-only dev
-shared/           API contract (source of truth for both sides)
+    components/           GraphView, CodePanel, ImportDialog, NodeEditor, Layout
+    api/                  Backend fetch wrappers
+    store/                Zustand stores
+    hooks/                Caching, layout
+    types/                API type reference (JSDoc)
+    mocks/                Mock data for frontend-only dev
+shared/                   API contract (source of truth for both sides)
 ```
 
 ## Setup
 
-```bash
-# Backend
-cd backend
-pip install -r requirements.txt
-python run.py                    # http://localhost:5000
+### Backend
 
-# Frontend
+```bash
+cd backend
+python -m venv venv
+source venv/bin/activate          # Windows: venv\Scripts\activate
+pip install -r ../requirements.txt
+cp ../.env.example ../.env
+# edit ../.env and set LLM_API_KEY to your Groq key
+uvicorn api.main:app --reload --port 8000
+```
+
+Server: `http://localhost:8000`
+Swagger UI: `http://localhost:8000/docs`
+
+Get a Groq API key at https://console.groq.com/keys (free tier).
+
+### Frontend
+
+```bash
 cd frontend
 npm install
-npm run dev                      # http://localhost:5173
+npm run dev                       # http://localhost:5173
 ```
 
 ## Team
 
-| Person | Role | What They Own |
-|--------|------|---------------|
-| **A** | AST Engine | tree-sitter parsing, call graph construction, language adapters, data models |
-| **B** | Backend API | Flask routes, GitHub clone, test runner, code modifier |
-| **C** | Graph Viz | react-flow graph, custom nodes/edges, layout, graph state |
-| **D** | UI + AI | Import dialog, code panel, node editor, API layer, Gemini integration |
+| Person | Role | Owns |
+|--------|------|------|
+| **P1** | Swift Parser | `backend/parser/` — tree-sitter, language adapters, IR JSON output |
+| **P2** | IR → Graph | `backend/app/services/ir_compiler.py` — graph builder, predict_impact, hotspots, dead_code |
+| **P3** | Backend API + LLM | `backend/api/` — FastAPI routes, Groq integration, SQLite cache |
+| **P4** | Frontend | `frontend/` — React app, graph viz, code panel, node editor |
 
-See `CLAUDE.md` for full conventions and `shared/api_contract.md` for the API spec.
+## Pipeline
+
+```
+Swift source ──▶ IR JSON ──▶ Graph JSON ──▶ HTTP API + LLM ──▶ React UI
+   (P1)            (P2)         (P3)              (P3)          (P4)
+```
+
+Each stage has one owner and one output format. Mock-first development means each downstream stage hand-writes a fake input from the upstream stage and stays unblocked until the real one ships.
+
+## API Contract
+
+See `shared/api_contract.md` for the full endpoint spec. Both sides must match these shapes — coordinate with the team before changing them.
+
+## Environment Variables
+
+See `.env.example` for the full list. Key ones:
+
+| Variable | Description |
+|---|---|
+| `LLM_PROVIDER` | LLM provider (`groq` default; `openai`, `anthropic`, etc. supported) |
+| `LLM_MODEL` | Model name (e.g. `llama-3.3-70b-versatile`) |
+| `LLM_API_KEY` | API key for the chosen provider |
+| `LLM_BASE_URL` | Base URL for OpenAI-compatible providers |
+| `CACHE_PATH` | SQLite cache file path |
+| `FRONTEND_ORIGIN` | Frontend origin allowed by CORS |
