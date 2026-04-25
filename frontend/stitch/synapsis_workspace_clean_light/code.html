@@ -1,0 +1,549 @@
+<!DOCTYPE html>
+
+<html class="light" lang="en"><head>
+<meta charset="utf-8"/>
+<meta content="width=device-width, initial-scale=1.0" name="viewport"/>
+<title>Synapsis - Workspace</title>
+<script src="https://cdn.tailwindcss.com?plugins=forms,container-queries"></script>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&amp;family=Space+Grotesk:wght@300;400;500;600;700;900&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<link href="https://fonts.googleapis.com/css2?family=Material+Symbols+Outlined:wght,FILL@100..700,0..1&amp;display=swap" rel="stylesheet"/>
+<script id="tailwind-config">
+        tailwind.config = {
+          darkMode: "class",
+          theme: {
+            extend: {
+              "colors": {
+                      "surface-container-low": "#f6f3f2",
+                      "on-tertiary-fixed": "#251230",
+                      "on-primary-container": "#410002",
+                      "inverse-surface": "#313030",
+                      "on-secondary-container": "#2f1500",
+                      "on-primary-fixed-variant": "#73332c",
+                      "on-tertiary": "#ffffff",
+                      "surface-container-lowest": "#ffffff",
+                      "surface": "#fcf8f8",
+                      "primary-container": "#ffdad6",
+                      "on-background": "#1c1b1b",
+                      "surface-variant": "#f4dddb",
+                      "on-secondary-fixed-variant": "#623f21",
+                      "secondary-container": "#ffdcbf",
+                      "error-container": "#ffdad6",
+                      "surface-dim": "#ddd9d9",
+                      "tertiary-fixed-dim": "#dabde1",
+                      "outline-variant": "#d7c1c0",
+                      "on-secondary": "#ffffff",
+                      "tertiary": "#6e5676",
+                      "on-error-container": "#410002",
+                      "surface-container": "#f0ede8",
+                      "outline": "#857371",
+                      "inverse-primary": "#ffb4ac",
+                      "on-tertiary-fixed-variant": "#553f5d",
+                      "surface-bright": "#fcf8f8",
+                      "on-primary-fixed": "#3b0908",
+                      "secondary": "#7e5635",
+                      "on-secondary-fixed": "#2f1500",
+                      "surface-container-highest": "#e5e2de",
+                      "on-surface-variant": "#524342",
+                      "background": "#fcf8f8",
+                      "secondary-fixed": "#ffdcbf",
+                      "primary": "#8f4a43",
+                      "surface-tint": "#8f4a43",
+                      "error": "#ba1a1a",
+                      "primary-fixed": "#ffdad6",
+                      "surface-container-high": "#eae6e2",
+                      "on-surface": "#1c1b1b",
+                      "secondary-fixed-dim": "#f1bc90",
+                      "on-primary": "#ffffff",
+                      "tertiary-fixed": "#f7d8ff",
+                      "on-error": "#ffffff",
+                      "inverse-on-surface": "#f4f0ef",
+                      "tertiary-container": "#f7d8ff",
+                      "primary-fixed-dim": "#ffb4ac",
+                      "on-tertiary-container": "#281335"
+              },
+              "borderRadius": {
+                      "DEFAULT": "0.125rem",
+                      "lg": "0.5rem",
+                      "xl": "1.0rem",
+                      "full": "9999px"
+              },
+              "spacing": {
+                      "margin": "40px",
+                      "stack-lg": "48px",
+                      "stack-md": "24px",
+                      "unit": "4px",
+                      "gutter": "24px",
+                      "container-max": "1440px",
+                      "stack-xs": "8px"
+              },
+              "fontFamily": {
+                      "label-sm": [
+                              "Inter"
+                      ],
+                      "headline-lg": [
+                              "Inter"
+                      ],
+                      "body-lg": [
+                              "Inter"
+                      ],
+                      "label-md": [
+                              "Inter"
+                      ],
+                      "headline-xl": [
+                              "Inter"
+                      ],
+                      "headline-md": [
+                              "Inter"
+                      ],
+                      "body-md": [
+                              "Inter"
+                      ]
+              },
+              "fontSize": {
+                      "label-sm": [
+                              "12px",
+                              {
+                                      "lineHeight": "1.0",
+                                      "letterSpacing": "0.08em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-lg": [
+                              "40px",
+                              {
+                                      "lineHeight": "1.2",
+                                      "letterSpacing": "-0.01em",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-lg": [
+                              "18px",
+                              {
+                                      "lineHeight": "1.6",
+                                      "fontWeight": "400"
+                              }
+                      ],
+                      "label-md": [
+                              "14px",
+                              {
+                                      "lineHeight": "1.0",
+                                      "letterSpacing": "0.05em",
+                                      "fontWeight": "500"
+                              }
+                      ],
+                      "headline-xl": [
+                              "64px",
+                              {
+                                      "lineHeight": "1.1",
+                                      "letterSpacing": "-0.02em",
+                                      "fontWeight": "700"
+                              }
+                      ],
+                      "headline-md": [
+                              "24px",
+                              {
+                                      "lineHeight": "1.3",
+                                      "fontWeight": "600"
+                              }
+                      ],
+                      "body-md": [
+                              "16px",
+                              {
+                                      "lineHeight": "1.6",
+                                      "fontWeight": "400"
+                              }
+                      ]
+              }
+      },
+          },
+        }
+    </script>
+<style>
+        body { background-color: #ffffff; color: #1c1b1b; margin: 0; overflow: hidden; }
+        .glass-panel {
+            background: rgba(255, 255, 255, 0.8);
+            backdrop-filter: blur(20px);
+            -webkit-backdrop-filter: blur(20px);
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-top: 1px solid rgba(255, 255, 255, 0.5);
+        }
+        .code-font { font-family: 'JetBrains Mono', 'Fira Code', monospace; }
+        
+        /* Node Canvas specific styles */
+        .node-canvas-bg {
+            background-color: #f6f3f2;
+            background-image: 
+                linear-gradient(rgba(0, 0, 0, 0.05) 1px, transparent 1px),
+                linear-gradient(90deg, rgba(0, 0, 0, 0.05) 1px, transparent 1px);
+            background-size: 24px 24px;
+        }
+        .node-card {
+            background: #ffffff;
+            border: 1px solid rgba(0, 0, 0, 0.1);
+            border-top: 1px solid rgba(143, 74, 67, 0.3);
+            box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        }
+        .node-card.active {
+            border-color: #8f4a43;
+            box-shadow: 0 0 15px rgba(143, 74, 67, 0.15);
+        }
+        .connection-line {
+            stroke: rgba(0, 0, 0, 0.2);
+            stroke-width: 2;
+            fill: none;
+        }
+        .connection-line.active {
+            stroke: #8f4a43;
+            stroke-width: 2.5;
+        }
+        .connection-line.condition-if { stroke-dasharray: 5, 5; }
+        .connection-line.condition-loop { stroke: #7e5635; }
+        .connection-line.condition-error { stroke: #ba1a1a; stroke-dasharray: 2, 2; }
+        
+        /* Scrollbar */
+        ::-webkit-scrollbar { width: 6px; height: 6px; }
+        ::-webkit-scrollbar-track { background: transparent; }
+        ::-webkit-scrollbar-thumb { background: rgba(0,0,0,0.1); border-radius: 3px; }
+        ::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,0.2); }
+    </style>
+</head>
+<body class="flex flex-col h-screen font-body-md text-body-md bg-surface-container-lowest">
+<!-- TopNavBar -->
+<header class="flex justify-between items-center w-full px-6 h-14 bg-white dark:bg-gray-950 z-50 docked full-width top-0 border-b border-gray-100 dark:border-gray-900 shadow-[0px_2px_4px_rgba(0,0,0,0.05)]">
+<div class="flex items-center gap-8 h-full">
+<div class="text-xl font-black tracking-tighter text-black dark:text-white flex items-center gap-2">
+<span class="material-symbols-outlined" style="font-variation-settings: 'FILL' 1;">account_tree</span>
+                Synapsis
+            </div>
+<nav class="hidden md:flex h-full items-center gap-6 font-['Inter'] text-sm font-medium tracking-tight">
+<a class="h-full flex items-center text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors active:opacity-80 transition-all" href="#">Dashboard</a>
+<a class="h-full flex items-center text-indigo-600 dark:text-indigo-400 border-b-2 border-indigo-600 dark:border-indigo-400 pb-1 active:opacity-80 transition-all" href="#">Workspace</a>
+<a class="h-full flex items-center text-gray-500 dark:text-gray-400 hover:text-indigo-600 dark:hover:text-indigo-400 transition-colors active:opacity-80 transition-all" href="#">Documentation</a>
+</nav>
+</div>
+<div class="flex items-center gap-4">
+<div class="hidden lg:flex items-center gap-2 mr-4 text-gray-500 bg-gray-50 px-3 py-1.5 rounded-lg border border-gray-200">
+<span class="material-symbols-outlined text-[16px]">search</span>
+<span class="font-label-sm text-xs">Search symbols...</span>
+<span class="font-label-sm text-[10px] ml-4 bg-gray-200 px-1 rounded text-gray-600">⌘K</span>
+</div>
+<button class="bg-indigo-600 text-white font-label-md px-4 py-2 rounded-lg flex items-center gap-2 active:opacity-80 transition-all hover:bg-indigo-700 shadow-sm text-sm font-medium">
+<span class="material-symbols-outlined text-[18px]">add</span>
+                Import Project
+            </button>
+<div class="flex items-center gap-2 ml-2">
+<button class="text-gray-500 hover:text-indigo-600 transition-colors p-2 active:opacity-80 transition-all">
+<span class="material-symbols-outlined">settings</span>
+</button>
+<button class="text-gray-500 hover:text-indigo-600 transition-colors p-2 active:opacity-80 transition-all">
+<span class="material-symbols-outlined">account_tree</span>
+</button>
+<img alt="User profile portrait of a young woman with natural lighting against a neutral background" class="w-8 h-8 rounded-full ml-2 border border-gray-200 object-cover" data-alt="User profile portrait of a young woman with natural lighting against a neutral background" src="https://lh3.googleusercontent.com/aida-public/AB6AXuDibffAsYhgN5Dr88LWi2euiCVPFTqe_tN0Dc12l9XrwyMJoRNwpT0X9zixGt6Syh1A3dF8bHxzelhb4-lM1XxXqni97jx-iU-20Ainz27dFt6h4r7MbXOSnru2z1plxUii7abiuaOWorqEonves6Wrvi5mmja9C7K_W0miXwgIFb6Rp_mbPbRxgNNuyh6P5qRLisq3nmv0c3Mpw8d7TZtr5qIgg48w9E0MF6ZNovChcSnHBB2-3xRTToD81Ti-cNcEnWVXvJ-ctmk"/>
+</div>
+</div>
+</header>
+<!-- Main Layout -->
+<div class="flex flex-1 h-full overflow-hidden relative">
+<!-- SideNavBar -->
+<nav class="flex flex-col h-screen fixed left-0 top-14 pt-4 pb-8 w-64 border-r border-gray-100 dark:border-gray-900 bg-white dark:bg-gray-950 z-40">
+<!-- Header section of nav -->
+<div class="flex flex-col items-start mb-8 w-full px-6">
+<div class="text-lg font-bold text-black dark:text-white mb-1">Workspace</div>
+<div class="text-[10px] font-['Inter'] uppercase tracking-widest text-gray-500">Production v1.0</div>
+</div>
+<!-- Main Tabs -->
+<div class="flex flex-col w-full px-4 flex-1 space-y-1">
+<button class="w-full flex items-center gap-3 py-2.5 px-4 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-black dark:hover:text-white transition-all scale-98 active:scale-95 duration-150">
+<span class="material-symbols-outlined text-[18px]">code</span>
+<span class="font-['Inter'] text-xs font-semibold uppercase tracking-widest">Explorer</span>
+</button>
+<button class="w-full flex items-center gap-3 py-2.5 px-4 rounded-lg text-indigo-600 dark:text-indigo-400 font-bold bg-gray-50 dark:bg-gray-900/50 transition-all scale-98 active:scale-95 duration-150">
+<span class="material-symbols-outlined text-[18px]" style="font-variation-settings: 'FILL' 1;">account_tree</span>
+<span class="font-['Inter'] text-xs font-semibold uppercase tracking-widest">Nodes</span>
+</button>
+<button class="w-full flex items-center gap-3 py-2.5 px-4 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-black dark:hover:text-white transition-all scale-98 active:scale-95 duration-150">
+<span class="material-symbols-outlined text-[18px]">psychology</span>
+<span class="font-['Inter'] text-xs font-semibold uppercase tracking-widest">Insights</span>
+</button>
+<button class="w-full flex items-center gap-3 py-2.5 px-4 rounded-lg text-gray-500 dark:text-gray-400 hover:bg-gray-50 dark:hover:bg-gray-900 hover:text-black dark:hover:text-white transition-all scale-98 active:scale-95 duration-150">
+<span class="material-symbols-outlined text-[18px]">terminal</span>
+<span class="font-['Inter'] text-xs font-semibold uppercase tracking-widest">Terminal</span>
+</button>
+<!-- CTA -->
+<div class="mt-6 px-2">
+<button class="w-full py-2.5 rounded-lg bg-indigo-50 text-indigo-600 flex items-center justify-center gap-2 hover:bg-indigo-100 active:scale-95 transition-all text-xs font-semibold uppercase tracking-widest border border-indigo-100">
+<span class="material-symbols-outlined text-[16px]">add</span>
+        New Node
+    </button>
+</div>
+</div>
+</nav>
+<!-- Main Content Area -->
+<main class="ml-64 flex-1 flex h-full relative bg-surface-container-low pt-14">
+<!-- Contextual Toolbar overlay on canvas -->
+<div class="absolute top-4 left-4 z-10 glass-panel rounded-lg px-4 py-2 flex items-center gap-4 bg-white border border-gray-200 shadow-sm">
+<div class="flex items-center gap-2">
+<span class="w-2 h-2 rounded-full bg-green-500 shadow-[0_0_4px_rgba(34,197,94,0.4)]"></span>
+<span class="font-label-sm text-gray-800 font-medium">Live Graph</span>
+</div>
+<div class="w-px h-4 bg-gray-200"></div>
+<div class="flex items-center gap-3">
+<button class="text-gray-500 hover:text-indigo-600 transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">play_arrow</span>
+<span class="font-label-sm">Run Tests</span>
+</button>
+<button class="text-gray-500 hover:text-indigo-600 transition-colors flex items-center gap-1">
+<span class="material-symbols-outlined text-[18px]">difference</span>
+<span class="font-label-sm">Compare Changes</span>
+</button>
+</div>
+</div>
+<!-- Center: Node Canvas -->
+<div class="flex-1 node-canvas-bg relative overflow-hidden h-full">
+<!-- SVG layer for connections -->
+<svg class="absolute inset-0 w-full h-full pointer-events-none z-0">
+<defs>
+<marker id="arrowhead" markerheight="7" markerwidth="10" orient="auto" refx="9" refy="3.5">
+<polygon fill="rgba(0,0,0,0.3)" points="0 0, 10 3.5, 0 7"></polygon>
+</marker>
+<marker id="arrowhead-active" markerheight="7" markerwidth="10" orient="auto" refx="9" refy="3.5">
+<polygon fill="#8f4a43" points="0 0, 10 3.5, 0 7"></polygon>
+</marker>
+</defs>
+<!-- Edges -->
+<path class="connection-line" d="M 250 150 C 350 150, 250 350, 350 350" marker-end="url(#arrowhead)"></path>
+<path class="connection-line active condition-if" d="M 550 350 C 650 350, 600 200, 700 200" marker-end="url(#arrowhead-active)"></path>
+<path class="connection-line condition-error" d="M 550 380 C 650 380, 600 500, 700 500" marker-end="url(#arrowhead)"></path>
+</svg>
+<!-- Nodes -->
+<!-- Node 1: Entry -->
+<div class="absolute top-[110px] left-[50px] z-10 w-[200px]">
+<div class="node-card rounded-lg p-3 cursor-move border border-gray-200">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-gray-500">login</span>
+<span class="font-label-sm text-gray-700 font-medium">api_handler.ts</span>
+</div>
+<span class="w-2 h-2 rounded-full bg-blue-500"></span>
+</div>
+<div class="font-body-md text-gray-900 font-semibold text-sm">processRequest()</div>
+<div class="mt-2 text-[10px] text-gray-500 font-label-sm uppercase">O(1) complexity</div>
+</div>
+<!-- Output handle -->
+<div class="absolute top-1/2 -right-1.5 w-3 h-3 rounded-full bg-gray-400 border border-white -translate-y-1/2"></div>
+</div>
+<!-- Node 2: Core Logic (Active) -->
+<div class="absolute top-[310px] left-[350px] z-10 w-[200px]">
+<!-- Input handle -->
+<div class="absolute top-1/2 -left-1.5 w-3 h-3 rounded-full bg-gray-400 border border-white -translate-y-1/2"></div>
+<div class="node-card active rounded-lg p-3 cursor-move border border-indigo-500 shadow-md">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-indigo-600">terminal</span>
+<span class="font-label-sm text-gray-700 font-medium">auth_service.ts</span>
+</div>
+<span class="w-2 h-2 rounded-full bg-indigo-500 shadow-[0_0_8px_rgba(99,102,241,0.4)]"></span>
+</div>
+<div class="font-body-md text-gray-900 font-semibold text-sm">validateToken()</div>
+<div class="mt-2 text-[10px] text-indigo-600 font-label-sm uppercase font-semibold">O(n) complexity</div>
+</div>
+<!-- Output handles -->
+<div class="absolute top-[30%] -right-1.5 w-3 h-3 rounded-full bg-indigo-500 border border-white -translate-y-1/2"></div>
+<div class="absolute top-[70%] -right-1.5 w-3 h-3 rounded-full bg-red-500 border border-white -translate-y-1/2"></div>
+</div>
+<!-- Node 3: Success Path -->
+<div class="absolute top-[160px] left-[700px] z-10 w-[200px]">
+<!-- Input handle -->
+<div class="absolute top-1/2 -left-1.5 w-3 h-3 rounded-full bg-indigo-500 border border-white -translate-y-1/2"></div>
+<div class="node-card rounded-lg p-3 cursor-move opacity-90 border border-gray-200">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-gray-500">database</span>
+<span class="font-label-sm text-gray-700 font-medium">db_query.ts</span>
+</div>
+</div>
+<div class="font-body-md text-gray-900 font-semibold text-sm">fetchUserData()</div>
+<div class="mt-2 flex gap-1">
+<span class="px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-label-sm text-gray-600 border border-gray-200">async</span>
+<span class="px-1.5 py-0.5 rounded bg-gray-100 text-[10px] font-label-sm text-gray-600 border border-gray-200">read</span>
+</div>
+</div>
+</div>
+<!-- Node 4: Error Path -->
+<div class="absolute top-[460px] left-[700px] z-10 w-[200px]">
+<!-- Input handle -->
+<div class="absolute top-1/2 -left-1.5 w-3 h-3 rounded-full bg-red-500 border border-white -translate-y-1/2"></div>
+<div class="node-card rounded-lg p-3 cursor-move border-red-200 opacity-90 bg-red-50/30">
+<div class="flex justify-between items-center mb-2">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[16px] text-red-500">warning</span>
+<span class="font-label-sm text-gray-700 font-medium">error_handler.ts</span>
+</div>
+</div>
+<div class="font-body-md text-gray-900 font-semibold text-sm">logSecurityEvent()</div>
+</div>
+</div>
+<!-- Minimap -->
+<div class="absolute bottom-4 left-4 w-48 h-32 glass-panel rounded-lg border border-gray-200 p-2 z-10 hidden lg:block bg-white shadow-sm">
+<div class="w-full h-full relative border border-gray-100 bg-gray-50 rounded">
+<!-- Viewport indicator -->
+<div class="absolute top-2 left-2 w-24 h-16 border-2 border-indigo-400 bg-indigo-50/50 rounded-sm"></div>
+<!-- Mini nodes -->
+<div class="absolute top-4 left-4 w-4 h-2 bg-gray-400 rounded-sm"></div>
+<div class="absolute top-8 left-12 w-4 h-2 bg-indigo-500 rounded-sm"></div>
+<div class="absolute top-4 left-20 w-4 h-2 bg-gray-400 rounded-sm"></div>
+<div class="absolute top-12 left-20 w-4 h-2 bg-red-500 rounded-sm"></div>
+</div>
+</div>
+</div>
+<!-- Right Sidebar: Code Panel -->
+<aside class="w-96 border-l border-gray-200 bg-white flex flex-col h-full z-20 flex-shrink-0 relative shadow-sm">
+<div class="h-12 border-b border-gray-200 flex items-center justify-between px-4 shrink-0 bg-gray-50">
+<div class="flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-indigo-600">code</span>
+<span class="font-label-md text-gray-800 font-medium">auth_service.ts</span>
+</div>
+<div class="flex gap-2">
+<button class="p-1 text-gray-500 hover:text-gray-900 rounded hover:bg-gray-200 transition-colors">
+<span class="material-symbols-outlined text-[16px]">more_vert</span>
+</button>
+<button class="p-1 text-gray-500 hover:text-gray-900 rounded hover:bg-gray-200 transition-colors">
+<span class="material-symbols-outlined text-[16px]">close</span>
+</button>
+</div>
+</div>
+<div class="flex-1 overflow-y-auto p-4 bg-[#fcf8f8] relative">
+<!-- Line numbers and code -->
+<div class="flex font-label-sm text-[12px] code-font leading-relaxed">
+<div class="flex flex-col text-gray-400 pr-4 select-none text-right border-r border-gray-200 mr-4">
+<span>12</span><span>13</span><span>14</span><span class="text-indigo-600 font-bold">15</span><span>16</span><span>17</span><span>18</span><span>19</span><span>20</span><span>21</span><span>22</span>
+</div>
+<div class="flex flex-col text-gray-800 whitespace-pre overflow-x-auto">
+<span><span class="text-blue-600 font-medium">export</span> <span class="text-blue-600 font-medium">async</span> <span class="text-blue-600 font-medium">function</span> <span class="text-indigo-700 font-semibold">validateToken</span>(</span>
+<span>  token: <span class="text-teal-600">string</span>,</span>
+<span>  context: <span class="text-teal-600">AuthContext</span></span>
+<span class="bg-indigo-50 -ml-4 pl-4 border-l-2 border-indigo-500 block w-full text-gray-900">) {</span>
+<span> <span class="text-green-600 italic">// Verify JWT signature</span></span>
+<span> <span class="text-blue-600 font-medium">try</span> {</span>
+<span> <span class="text-blue-600 font-medium">const</span> decoded = <span class="text-blue-600 font-medium">await</span> jwt.<span class="text-indigo-700">verify</span>(</span>
+<span>      token, </span>
+<span>      process.env.JWT_SECRET</span>
+<span>    );</span>
+<span> </span>
+<span> <span class="text-blue-600 font-medium">if</span> (!decoded.userId) {</span>
+<span> <span class="text-blue-600 font-medium">throw new</span> <span class="text-teal-600">Error</span>(<span class="text-red-600">'Invalid token payload'</span>);</span>
+<span>    }</span>
+<span> </span>
+<span> <span class="text-blue-600 font-medium">return</span> { isValid: <span class="text-blue-600 font-medium">true</span>, userId: decoded.userId };</span>
+<span>  } <span class="text-blue-600 font-medium">catch</span> (err) {</span>
+<span> <span class="text-blue-600 font-medium">return</span> { isValid: <span class="text-blue-600 font-medium">false</span>, error: err.message };</span>
+<span>  }</span>
+<span>}</span>
+</div>
+</div>
+</div>
+<!-- Info panel at bottom of sidebar -->
+<div class="h-1/3 border-t border-gray-200 bg-white flex flex-col shrink-0">
+<div class="px-4 py-3 border-b border-gray-100 flex justify-between items-center bg-gray-50">
+<span class="font-label-sm text-gray-600 font-bold uppercase tracking-wider text-[10px]">Node Analysis</span>
+<button class="flex items-center gap-1 text-[10px] font-label-sm text-indigo-700 hover:text-indigo-900 transition-colors bg-indigo-50 hover:bg-indigo-100 px-2.5 py-1.5 rounded-md border border-indigo-200 font-medium">
+<span class="material-symbols-outlined text-[12px]">auto_awesome</span>
+                            Summarize
+                        </button>
+</div>
+<div class="p-4 overflow-y-auto">
+<p class="font-body-md text-sm text-gray-700 mb-5 leading-relaxed">
+                            This function validates incoming JWT tokens. It has two main execution paths based on the try/catch block.
+                        </p>
+<div class="space-y-3">
+<div class="flex justify-between items-center border-b border-gray-100 pb-2">
+<span class="font-label-sm text-gray-500 text-xs font-medium">Dependencies</span>
+<span class="font-label-sm text-gray-800 text-xs bg-gray-100 px-2 py-1 rounded-md font-medium">jwt, process.env</span>
+</div>
+<div class="flex justify-between items-center border-b border-gray-100 pb-2">
+<span class="font-label-sm text-gray-500 text-xs font-medium">Return Type</span>
+<span class="font-label-sm text-gray-800 text-xs bg-gray-100 px-2 py-1 rounded-md font-medium">{ isValid: boolean, ... }</span>
+</div>
+<div class="flex justify-between items-center">
+<span class="font-label-sm text-gray-500 text-xs font-medium">Execution Time (Avg)</span>
+<span class="font-label-sm text-indigo-700 text-xs bg-indigo-50 px-2 py-1 rounded-md font-bold">12ms</span>
+</div>
+</div>
+</div>
+</div>
+</aside>
+<!-- Left Floating Panel: Node Editor -->
+<div class="absolute left-6 top-6 w-80 bg-white rounded-xl shadow-xl z-30 flex flex-col border border-gray-200 overflow-hidden transform transition-transform">
+<div class="bg-gray-50 px-4 py-3 flex items-center justify-between border-b border-gray-200">
+<span class="font-label-md text-gray-900 font-semibold flex items-center gap-2">
+<span class="material-symbols-outlined text-[18px] text-indigo-600">add_box</span>
+                        New Function Node
+                    </span>
+<button class="text-gray-400 hover:text-gray-700 transition-colors">
+<span class="material-symbols-outlined text-[18px]">close</span>
+</button>
+</div>
+<div class="p-5 flex flex-col gap-5 bg-white max-h-[calc(100vh-200px)] overflow-y-auto">
+<div class="flex flex-col gap-1.5">
+<label class="font-label-sm text-[10px] text-gray-500 font-bold uppercase tracking-wider">Function Name</label>
+<input class="bg-transparent border-b border-gray-300 border-t-0 border-x-0 focus:border-indigo-600 focus:ring-0 text-gray-900 font-label-md px-0 py-1.5 text-sm transition-colors w-full placeholder:text-gray-400" placeholder="e.g. hashPassword" type="text"/>
+</div>
+<div class="flex flex-col gap-1.5">
+<label class="font-label-sm text-[10px] text-gray-500 font-bold uppercase tracking-wider">File Path</label>
+<input class="bg-transparent border-b border-gray-300 border-t-0 border-x-0 focus:border-indigo-600 focus:ring-0 text-gray-900 font-label-md px-0 py-1.5 text-sm transition-colors w-full placeholder:text-gray-400" placeholder="src/utils/crypto.ts" type="text"/>
+</div>
+<div class="bg-indigo-50/50 border border-indigo-100 rounded-lg p-3 mt-1">
+<div class="flex items-center justify-between mb-2">
+<label class="font-label-sm text-[10px] text-indigo-700 font-bold uppercase tracking-wider flex items-center gap-1">
+<span class="material-symbols-outlined text-[12px]">auto_awesome</span> Smart Add
+                            </label>
+</div>
+<textarea class="w-full bg-transparent border-0 focus:ring-0 text-sm text-gray-700 placeholder:text-gray-400 resize-none h-16 p-0 font-body-md" placeholder="Describe what this function should do..."></textarea>
+</div>
+<div class="h-px w-full bg-gray-100 my-1"></div>
+<span class="font-label-sm text-xs text-gray-900 font-semibold mb-1">Relationships</span>
+<!-- Called By -->
+<div class="bg-gray-50 rounded-lg border border-gray-200 p-3 flex flex-col gap-2">
+<span class="font-label-sm text-[10px] text-gray-500 font-bold uppercase">Called By Node</span>
+<div class="flex items-center gap-2">
+<select class="bg-white border border-gray-300 rounded-md text-xs text-gray-700 py-1.5 px-2 focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600 w-2/3 shadow-sm">
+<option>processRequest()</option>
+<option>validateToken()</option>
+<option>None (Entry point)</option>
+</select>
+<select class="bg-white border border-gray-300 rounded-md text-xs text-gray-700 py-1.5 px-2 focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600 w-1/3 shadow-sm">
+<option>Normal</option>
+<option>If</option>
+<option>Catch</option>
+</select>
+</div>
+</div>
+<!-- Calls Node -->
+<div class="bg-gray-50 rounded-lg border border-gray-200 p-3 flex flex-col gap-2">
+<span class="font-label-sm text-[10px] text-gray-500 font-bold uppercase">Calls Node</span>
+<div class="flex items-center gap-2">
+<select class="bg-white border border-gray-300 rounded-md text-xs text-gray-700 py-1.5 px-2 focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600 w-2/3 shadow-sm">
+<option>Select node...</option>
+<option>db_query()</option>
+<option>logEvent()</option>
+</select>
+<select class="bg-white border border-gray-300 rounded-md text-xs text-gray-700 py-1.5 px-2 focus:ring-1 focus:ring-indigo-600 focus:border-indigo-600 w-1/3 shadow-sm">
+<option>Normal</option>
+<option>If</option>
+<option>Catch</option>
+</select>
+</div>
+<button class="text-[10px] font-label-sm text-indigo-600 hover:text-indigo-800 font-medium text-left mt-1 flex items-center gap-1 w-max">
+<span class="material-symbols-outlined text-[12px]">add</span> Add another
+                        </button>
+</div>
+</div>
+<div class="bg-gray-50 p-4 border-t border-gray-200 flex justify-end gap-3 rounded-b-xl">
+<button class="px-4 py-2 rounded-lg border border-gray-300 text-xs font-label-sm font-medium text-gray-700 hover:bg-gray-100 transition-colors bg-white shadow-sm">Cancel</button>
+<button class="px-4 py-2 rounded-lg bg-indigo-600 text-white text-xs font-label-sm font-medium hover:bg-indigo-700 transition-colors shadow-sm">Create Node</button>
+</div>
+</div>
+</main>
+</div>
+</body></html>

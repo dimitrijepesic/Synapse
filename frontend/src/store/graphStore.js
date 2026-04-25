@@ -162,12 +162,11 @@ const useGraphStore = create((set, get) => ({
       }
 
       const layoutNodes = rawNodes.map((n) => ({ ...n, position: positions[n.id] || { x: 0, y: 0 } }));
-      const firstSource = layoutNodes.find((n) => n.category === 'source')?.id || layoutNodes[0]?.id || null;
 
       set({
         nodes: layoutNodes,
         edges: rawEdges,
-        selectedNodeId: firstSource,
+        selectedNodeId: null,
         selectedFile: null,
         sourceFiles,
         graphId: graphId,
@@ -229,30 +228,75 @@ const useGraphStore = create((set, get) => ({
     const { nodes, edges } = get();
     if (nodes.length === 0) return;
 
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({
-      rankdir: 'LR',
-      nodesep: 40,
-      ranksep: 100,
-      marginx: 40,
-      marginy: 40,
-    });
-    g.setDefaultEdgeLabel(() => ({}));
-
-    nodes.forEach((n) => {
-      g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-    });
+    // Split: connected nodes go to dagre, isolated nodes get grid-packed
+    // separately so they don't form a tall vertical column.
+    const connectedIds = new Set();
     edges.forEach((e) => {
-      if (e.source !== e.target) g.setEdge(e.source, e.target);
+      if (e.source !== e.target) {
+        connectedIds.add(e.source);
+        connectedIds.add(e.target);
+      }
     });
-
-    dagre.layout(g);
+    const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
+    const isolatedNodes = nodes.filter((n) => !connectedIds.has(n.id));
 
     const targets = {};
-    nodes.forEach((n) => {
-      const p = g.node(n.id);
-      if (p) targets[n.id] = { x: Math.round(p.x - NODE_WIDTH / 2), y: Math.round(p.y - NODE_HEIGHT / 2) };
-    });
+    let dagreBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
+
+    if (connectedNodes.length > 0) {
+      const g = new dagre.graphlib.Graph();
+      g.setGraph({
+        rankdir: 'LR',
+        nodesep: 40,
+        ranksep: 100,
+        marginx: 40,
+        marginy: 40,
+      });
+      g.setDefaultEdgeLabel(() => ({}));
+
+      connectedNodes.forEach((n) => {
+        g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
+      });
+      edges.forEach((e) => {
+        if (e.source !== e.target && connectedIds.has(e.source) && connectedIds.has(e.target)) {
+          g.setEdge(e.source, e.target);
+        }
+      });
+
+      dagre.layout(g);
+
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      connectedNodes.forEach((n) => {
+        const p = g.node(n.id);
+        if (!p) return;
+        const x = Math.round(p.x - NODE_WIDTH / 2);
+        const y = Math.round(p.y - NODE_HEIGHT / 2);
+        targets[n.id] = { x, y };
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x + NODE_WIDTH > maxX) maxX = x + NODE_WIDTH;
+        if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
+      });
+      if (minX !== Infinity) dagreBounds = { minX, minY, maxX, maxY };
+    }
+
+    // Grid-pack isolated nodes to the right of the dagre cluster.
+    if (isolatedNodes.length > 0) {
+      const GAP_X = 24;
+      const GAP_Y = 24;
+      const startX = (connectedNodes.length > 0 ? dagreBounds.maxX + 80 : 40);
+      const startY = (connectedNodes.length > 0 ? dagreBounds.minY : 40);
+      // Aim for a roughly square block; cap columns so it doesn't go too wide.
+      const cols = Math.max(1, Math.min(12, Math.ceil(Math.sqrt(isolatedNodes.length))));
+      isolatedNodes.forEach((n, i) => {
+        const c = i % cols;
+        const r = Math.floor(i / cols);
+        targets[n.id] = {
+          x: startX + c * (NODE_WIDTH + GAP_X),
+          y: startY + r * (NODE_HEIGHT + GAP_Y),
+        };
+      });
+    }
 
     if (!animate) {
       set((state) => ({
