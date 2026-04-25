@@ -162,6 +162,9 @@ export default function Workspace() {
 
   const selectedNode = nodes.find((n) => n.id === selectedNodeId) || null;
 
+  // Dead-node visibility: hidden by default, user can toggle to show
+  const [showDeadNodes, setShowDeadNodes] = useState(false);
+
   // Filter panel state
   const [filterPanelOpen, setFilterPanelOpen] = useState(false);
   const activeFilterCount = Object.keys(filters).length;
@@ -259,6 +262,11 @@ export default function Workspace() {
     }
     return false;
   }, [classFilter]);
+
+  // Visible nodes: hide dead nodes unless toggled on
+  const visibleNodes = showDeadNodes ? nodes : nodes.filter((n) => !isDeadNode(n));
+  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
+  const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
 
   // --- Zoom / Pan state ---
   const canvasRef = useRef(null);
@@ -489,10 +497,27 @@ export default function Workspace() {
               </span>
               <span className="font-label-sm">{clusterView ? 'Packaged' : 'Packages'}</span>
             </button>
+            <button
+              onClick={() => setShowDeadNodes((v) => !v)}
+              className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
+                showDeadNodes
+                  ? 'bg-rose-600 text-white border-rose-600 hover:bg-rose-700 shadow-sm'
+                  : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
+              }`}
+              title={showDeadNodes ? 'Hide dead nodes' : `Show dead nodes (${nodes.filter(isDeadNode).length} hidden)`}
+            >
+              <span className="material-symbols-outlined text-[16px]">
+                {showDeadNodes ? 'visibility' : 'visibility_off'}
+              </span>
+              <span className="font-label-sm">Dead</span>
+              <span className={`text-[10px] ${showDeadNodes ? 'text-white/70' : 'text-gray-400'}`}>
+                {nodes.filter(isDeadNode).length}
+              </span>
+            </button>
             <div className="glass-panel rounded-lg px-1.5 py-1 flex items-center gap-1">
               {CANVAS_FILTERS.map((f) => {
                 const on = classFilter.has(f.id);
-                const count = nodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
+                const count = visibleNodes.reduce((s, n) => s + (f.match(n) ? 1 : 0), 0);
                 return (
                   <button
                     key={f.id}
@@ -596,16 +621,15 @@ export default function Workspace() {
                     })}
 
                     {/* Edges between nodes in expanded clusters */}
-                    {edges.map((edge) => {
+                    {visibleEdges.map((edge) => {
                       const srcCluster = nodeClusterMap[edge.source];
                       const tgtCluster = nodeClusterMap[edge.target];
-                      // Only show node-level edges if both ends are in expanded clusters
                       const srcExpanded = srcCluster && expandedClusters.has(srcCluster);
                       const tgtExpanded = tgtCluster && expandedClusters.has(tgtCluster);
                       if (!srcExpanded && !tgtExpanded) return null;
 
-                      const sourceNode = nodes.find((n) => n.id === edge.source);
-                      const targetNode = nodes.find((n) => n.id === edge.target);
+                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
+                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
                       if (!sourceNode || !targetNode) return null;
 
                       if (edge.source === edge.target) {
@@ -643,19 +667,18 @@ export default function Workspace() {
                     );
                   })}
 
-                  {/* Nodes inside expanded clusters */}
-                  {nodes.map((node) => {
+                  {/* Nodes inside expanded clusters — compact mode */}
+                  {visibleNodes.map((node) => {
                     const clusterId = nodeClusterMap[node.id];
                     if (!clusterId || !expandedClusters.has(clusterId)) return null;
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
                     const dimByFilter = !matchesClassFilter(node);
                     return (
-                      <NodeCard
+                      <CompactNodeCard
                         key={node.id}
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={edges}
                         onSelect={() => selectNode(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
@@ -669,9 +692,9 @@ export default function Workspace() {
 
                   {/* SVG edges */}
                   <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
-                    {edges.map((edge) => {
-                      const sourceNode = nodes.find((n) => n.id === edge.source);
-                      const targetNode = nodes.find((n) => n.id === edge.target);
+                    {visibleEdges.map((edge) => {
+                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
+                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
                       if (!sourceNode || !targetNode) return null;
                       if (edge.source === edge.target) {
                         return (
@@ -693,7 +716,7 @@ export default function Workspace() {
                   </svg>
 
                   {/* Nodes */}
-                  {nodes.map((node) => {
+                  {visibleNodes.map((node) => {
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
                     const dimByFilter = !matchesClassFilter(node);
                     return (
@@ -702,7 +725,7 @@ export default function Workspace() {
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={edges}
+                        edges={visibleEdges}
                         onSelect={() => selectNode(node.id)}
                         onMove={(pos) => moveNode(node.id, pos)}
                         zoom={zoom}
@@ -715,7 +738,7 @@ export default function Workspace() {
 
             {/* Minimap — stays fixed in viewport */}
             <Minimap
-              nodes={nodes}
+              nodes={visibleNodes}
               selectedNodeId={selectedNodeId}
               zoom={zoom}
               pan={pan}
@@ -1467,6 +1490,14 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
               TEST
             </span>
           )}
+          {node.isHttpEndpoint && (
+            <span
+              className="px-1.5 py-0.5 rounded bg-sky-50 text-[9px] font-label-sm text-sky-700 border border-sky-200"
+              title="HTTP endpoint — called externally via HTTP"
+            >
+              HTTP
+            </span>
+          )}
           {isDead && (
             <span
               className="px-1.5 py-0.5 rounded bg-rose-50 text-[9px] font-label-sm text-rose-700 border border-rose-200"
@@ -1497,6 +1528,76 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onMove,
         </div>
       </div>
 
+    </div>
+  );
+}
+
+// --- Compact Node Card (for inside clusters) ---
+
+const COMPACT_NODE_WIDTH = 200;
+const COMPACT_NODE_HEIGHT = 150;
+
+function CompactNodeCard({ node, isSelected, isDimmed = false, onSelect, onMove, zoom = 1 }) {
+  const handleMouseDown = useCallback(
+    (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      e.stopPropagation();
+      onSelect();
+      const startX = e.clientX;
+      const startY = e.clientY;
+      const startPos = { ...node.position };
+      const onMouseMove = (ev) => {
+        onMove({
+          x: startPos.x + (ev.clientX - startX) / zoom,
+          y: startPos.y + (ev.clientY - startY) / zoom,
+        });
+      };
+      const onMouseUp = () => {
+        document.removeEventListener('mousemove', onMouseMove);
+        document.removeEventListener('mouseup', onMouseUp);
+      };
+      document.addEventListener('mousemove', onMouseMove);
+      document.addEventListener('mouseup', onMouseUp);
+    },
+    [node.position, onSelect, onMove, zoom],
+  );
+
+  const iconColor = isSelected ? 'text-primary' : 'text-gray-500';
+
+  return (
+    <div
+      className="absolute z-10"
+      style={{
+        top: node.position.y,
+        left: node.position.x,
+        width: COMPACT_NODE_WIDTH,
+        height: COMPACT_NODE_HEIGHT,
+      }}
+    >
+      <div
+        className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} rounded px-2.5 py-2 cursor-move h-full overflow-hidden`}
+        onMouseDown={handleMouseDown}
+      >
+        <div className="flex items-center gap-1.5">
+          <span className={`material-symbols-outlined text-[14px] ${iconColor}`}>{node.icon}</span>
+          <span className="font-body-md text-gray-900 truncate text-[13px] flex-1" title={node.qualifiedName || node.functionName}>
+            {node.functionName}
+          </span>
+          {isSelected && (
+            <span className="w-1.5 h-1.5 rounded-full bg-primary shrink-0" />
+          )}
+        </div>
+        <div className="mt-1 flex items-center gap-1 text-[9px] text-gray-400">
+          <span>
+            {node.container ? `${node.container}` : node.filePath.split('/').pop()}
+          </span>
+          <span className="ml-auto font-label-sm flex items-center gap-0.5">
+            <span>←{node.inDegree ?? 0}</span>
+            <span>→{node.outDegree ?? 0}</span>
+          </span>
+        </div>
+      </div>
     </div>
   );
 }
