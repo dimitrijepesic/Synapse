@@ -233,12 +233,42 @@ export default function ControlFlow() {
   const [overviewLoading, setOverviewLoading] = useState(false);
   const [overviewError, setOverviewError] = useState(null);
   const [overviewOpen, setOverviewOpen] = useState(false);
+  const [displayedOverview, setDisplayedOverview] = useState('');
+  const [overviewRevealed, setOverviewRevealed] = useState(false);
 
-  // Hotspots state
+  useEffect(() => {
+    if (!overview) {
+      setDisplayedOverview('');
+      setOverviewRevealed(false);
+      return;
+    }
+    setDisplayedOverview('');
+    setOverviewRevealed(false);
+    let raf2 = 0;
+    const raf1 = requestAnimationFrame(() => {
+      raf2 = requestAnimationFrame(() => setOverviewRevealed(true));
+    });
+    let i = 0;
+    const typingDelay = setTimeout(() => {
+      const id = setInterval(() => {
+        i = Math.min(i + 3, overview.length);
+        setDisplayedOverview(overview.slice(0, i));
+        if (i >= overview.length) clearInterval(id);
+      }, 15);
+      typingDelay.intervalId = id;
+    }, 120);
+    return () => {
+      cancelAnimationFrame(raf1);
+      cancelAnimationFrame(raf2);
+      clearTimeout(typingDelay);
+      if (typingDelay.intervalId) clearInterval(typingDelay.intervalId);
+    };
+  }, [overview]);
+
+  // Insights (hotspots + dead code) state
+  const [insightsOpen, setInsightsOpen] = useState(false);
   const [hotspotsData, setHotspotsData] = useState(null);
   const [hotspotsLoading, setHotspotsLoading] = useState(false);
-
-  // Dead code state
   const [deadCodeData, setDeadCodeData] = useState(null);
   const [deadCodeLoading, setDeadCodeLoading] = useState(false);
 
@@ -265,32 +295,22 @@ export default function ControlFlow() {
     }
   }, []);
 
-  const handleHotspots = useCallback(async () => {
+  const handleInsights = useCallback(() => {
+    setInsightsOpen(true);
     setHotspotsLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}${ENDPOINTS.hotspots}`);
-      if (!res.ok) throw new Error(`Hotspots failed: ${res.status}`);
-      const data = await res.json();
-      setHotspotsData(data.results || []);
-    } catch (err) {
-      setHotspotsData(null);
-    } finally {
-      setHotspotsLoading(false);
-    }
-  }, []);
-
-  const handleDeadCode = useCallback(async () => {
     setDeadCodeLoading(true);
-    try {
-      const res = await fetch(`${API_BASE}${ENDPOINTS.deadCode}`);
-      if (!res.ok) throw new Error(`Dead code failed: ${res.status}`);
-      const data = await res.json();
-      setDeadCodeData(data.results || []);
-    } catch (err) {
-      setDeadCodeData(null);
-    } finally {
-      setDeadCodeLoading(false);
-    }
+
+    fetch(`${API_BASE}${ENDPOINTS.hotspots}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Hotspots failed: ${r.status}`))))
+      .then((d) => setHotspotsData(d.results || []))
+      .catch(() => setHotspotsData([]))
+      .finally(() => setHotspotsLoading(false));
+
+    fetch(`${API_BASE}${ENDPOINTS.deadCode}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`Dead code failed: ${r.status}`))))
+      .then((d) => setDeadCodeData(d.results || []))
+      .catch(() => setDeadCodeData([]))
+      .finally(() => setDeadCodeLoading(false));
   }, []);
 
   // Direct neighbors (callers + callees) of the selected node — used for highlighting
@@ -618,10 +638,8 @@ export default function ControlFlow() {
           onFunctionSelect={handleFunctionSelect}
           onOverview={handleOverview}
           overviewLoading={overviewLoading}
-          onHotspots={handleHotspots}
-          hotspotsLoading={hotspotsLoading}
-          onDeadCode={handleDeadCode}
-          deadCodeLoading={deadCodeLoading}
+          onInsights={handleInsights}
+          insightsLoading={hotspotsLoading || deadCodeLoading}
           showUnusedNodes={showUnusedNodes}
           onToggleUnused={() => setShowUnusedNodes((v) => !v)}
           unusedCount={nodes.filter(isUnusedNode).length}
@@ -1029,9 +1047,9 @@ export default function ControlFlow() {
 
           {/* Overview overlay */}
           {overviewOpen && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setOverviewOpen(false)}>
-              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setOverviewOpen(false)}>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-2xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
                   <div className="flex items-center gap-2">
                     <span className="material-symbols-outlined text-[20px] text-primary">summarize</span>
                     <h3 className="font-label-md text-gray-900 text-base">Codebase Overview</h3>
@@ -1040,94 +1058,139 @@ export default function ControlFlow() {
                     <span className="material-symbols-outlined text-[18px]">close</span>
                   </button>
                 </div>
-                {overviewLoading && (
-                  <div className="flex items-center gap-2 text-gray-500">
-                    <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
-                    <span className="text-sm">Generating overview…</span>
-                  </div>
-                )}
-                {overviewError && (
-                  <p className="text-sm text-rose-600">{overviewError}</p>
-                )}
-                {overview && (
-                  <p className="text-sm text-gray-700 whitespace-pre-wrap leading-relaxed">{overview}</p>
-                )}
+                <div className="flex-1 overflow-y-auto px-6 py-5">
+                  {overviewLoading && !overview && (
+                    <div className="flex items-center gap-2 text-gray-500">
+                      <span className="material-symbols-outlined text-[18px] animate-spin">progress_activity</span>
+                      <span className="font-label-sm text-sm">Generating overview…</span>
+                    </div>
+                  )}
+                  {overviewError && (
+                    <p className="font-body-md text-sm text-rose-600 mb-3">{overviewError}</p>
+                  )}
+                  {overview && (
+                    <div>
+                      <div className="flex items-center gap-1 mb-1.5">
+                        <span className="material-symbols-outlined text-[12px] text-primary">auto_awesome</span>
+                        <span className="font-label-sm text-[10px] text-primary uppercase tracking-wider">AI Overview</span>
+                      </div>
+                      <div
+                        className="grid transition-[grid-template-rows,opacity] duration-500 ease-out"
+                        style={{ gridTemplateRows: overviewRevealed ? '1fr' : '0fr', opacity: overviewRevealed ? 1 : 0 }}
+                      >
+                        <div className="min-h-0 overflow-hidden">
+                          <div
+                            className="relative text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap"
+                            style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
+                          >
+                            <p aria-hidden className="invisible m-0">{highlightTokens(overview)}</p>
+                            <p className="absolute inset-0 m-0">
+                              {highlightTokens(displayedOverview)}
+                              {displayedOverview.length < overview.length && (
+                                <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
+                              )}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+                    </div>
+                  )}
+                </div>
               </div>
             </div>
           )}
 
-          {/* Hotspots overlay */}
-          {hotspotsData && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setHotspotsData(null)}>
-              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
+          {/* Insights overlay — Hotspots + Dead Code combined */}
+          {insightsOpen && (
+            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30 p-4" onClick={() => setInsightsOpen(false)}>
+              <div className="bg-white rounded-xl shadow-2xl w-full max-w-4xl max-h-[85vh] flex flex-col" onClick={(e) => e.stopPropagation()}>
+                <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
                   <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[20px] text-orange-500">local_fire_department</span>
-                    <h3 className="font-label-md text-gray-900 text-base">Hotspot Functions</h3>
+                    <span className="material-symbols-outlined text-[20px] text-deep-olive">insights</span>
+                    <h3 className="font-label-md text-gray-900 text-base">Code Insights</h3>
                   </div>
-                  <button onClick={() => setHotspotsData(null)} className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100">
+                  <button onClick={() => setInsightsOpen(false)} className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100">
                     <span className="material-symbols-outlined text-[18px]">close</span>
                   </button>
                 </div>
-                {hotspotsData.length === 0 ? (
-                  <p className="text-sm text-gray-500">No hotspots found.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {hotspotsData.map((h, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { handleFunctionSelect(h.id); setHotspotsData(null); }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100 text-left transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-800 truncate">{h.qualified_name || h.name}</p>
-                          <p className="text-[11px] text-gray-400 truncate">{h.file}:{h.line}</p>
+                <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-gray-100 flex-1 min-h-0">
+                  {/* Hotspots column */}
+                  <div className="flex flex-col min-h-0">
+                    <div className="px-5 pt-4 pb-2 flex items-center gap-2 shrink-0">
+                      <span className="material-symbols-outlined text-[18px] text-orange-500">local_fire_department</span>
+                      <h4 className="font-label-md text-gray-900 text-sm">Hotspot Functions</h4>
+                      {hotspotsData && !hotspotsLoading && (
+                        <span className="text-[11px] text-gray-400 ml-auto">{hotspotsData.length}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-3 pb-4">
+                      {hotspotsLoading ? (
+                        <div className="flex items-center gap-2 px-2 py-3 text-gray-500">
+                          <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                          <span className="text-sm">Loading…</span>
                         </div>
-                        <span className="text-[11px] text-orange-600 shrink-0 ml-2">
-                          {h.in_degree} callers
-                        </span>
-                      </button>
-                    ))}
+                      ) : !hotspotsData || hotspotsData.length === 0 ? (
+                        <p className="text-sm text-gray-500 px-2 py-3">No hotspots found.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {hotspotsData.map((h, i) => (
+                            <button
+                              key={i}
+                              onClick={() => { handleFunctionSelect(h.id); setInsightsOpen(false); }}
+                              className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100 text-left transition-colors"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm text-gray-800 truncate">{h.qualified_name || h.name}</p>
+                                <p className="text-[11px] text-gray-400 truncate">{h.file}:{h.line}</p>
+                              </div>
+                              <span className="text-[11px] text-orange-600 shrink-0 ml-2">
+                                {h.in_degree} callers
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                )}
-              </div>
-            </div>
-          )}
-
-          {/* Dead code overlay */}
-          {deadCodeData && (
-            <div className="absolute inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setDeadCodeData(null)}>
-              <div className="bg-white rounded-xl shadow-2xl max-w-lg w-full mx-4 p-6 max-h-[80vh] overflow-y-auto" onClick={(e) => e.stopPropagation()}>
-                <div className="flex items-center justify-between mb-4">
-                  <div className="flex items-center gap-2">
-                    <span className="material-symbols-outlined text-[20px] text-rose-500">delete_sweep</span>
-                    <h3 className="font-label-md text-gray-900 text-base">Dead Code</h3>
+                  {/* Dead Code column */}
+                  <div className="flex flex-col min-h-0">
+                    <div className="px-5 pt-4 pb-2 flex items-center gap-2 shrink-0">
+                      <span className="material-symbols-outlined text-[18px] text-rose-500">delete_sweep</span>
+                      <h4 className="font-label-md text-gray-900 text-sm">Dead Code</h4>
+                      {deadCodeData && !deadCodeLoading && (
+                        <span className="text-[11px] text-gray-400 ml-auto">{deadCodeData.length}</span>
+                      )}
+                    </div>
+                    <div className="flex-1 overflow-y-auto px-3 pb-4">
+                      {deadCodeLoading ? (
+                        <div className="flex items-center gap-2 px-2 py-3 text-gray-500">
+                          <span className="material-symbols-outlined text-[16px] animate-spin">progress_activity</span>
+                          <span className="text-sm">Loading…</span>
+                        </div>
+                      ) : !deadCodeData || deadCodeData.length === 0 ? (
+                        <p className="text-sm text-gray-500 px-2 py-3">No dead code found.</p>
+                      ) : (
+                        <div className="space-y-1">
+                          {deadCodeData.map((d, i) => (
+                            <button
+                              key={i}
+                              onClick={() => { handleFunctionSelect(d.id); setInsightsOpen(false); }}
+                              className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100 text-left transition-colors"
+                            >
+                              <div className="min-w-0">
+                                <p className="text-sm text-gray-800 truncate">{d.qualified_name || d.name}</p>
+                                <p className="text-[11px] text-gray-400 truncate">{d.file}:{d.line}</p>
+                              </div>
+                              <span className="text-[10px] text-rose-500 shrink-0 ml-2 bg-rose-50 px-1.5 py-0.5 rounded">
+                                unreachable
+                              </span>
+                            </button>
+                          ))}
+                        </div>
+                      )}
+                    </div>
                   </div>
-                  <button onClick={() => setDeadCodeData(null)} className="p-1 text-gray-400 hover:text-gray-900 rounded hover:bg-gray-100">
-                    <span className="material-symbols-outlined text-[18px]">close</span>
-                  </button>
                 </div>
-                {deadCodeData.length === 0 ? (
-                  <p className="text-sm text-gray-500">No dead code found.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {deadCodeData.map((d, i) => (
-                      <button
-                        key={i}
-                        onClick={() => { handleFunctionSelect(d.id); setDeadCodeData(null); }}
-                        className="w-full flex items-center justify-between px-3 py-2 rounded hover:bg-gray-100 text-left transition-colors"
-                      >
-                        <div className="min-w-0">
-                          <p className="text-sm text-gray-800 truncate">{d.qualified_name || d.name}</p>
-                          <p className="text-[11px] text-gray-400 truncate">{d.file}:{d.line}</p>
-                        </div>
-                        <span className="text-[10px] text-rose-500 shrink-0 ml-2 bg-rose-50 px-1.5 py-0.5 rounded">
-                          unreachable
-                        </span>
-                      </button>
-                    ))}
-                  </div>
-                )}
               </div>
             </div>
           )}
@@ -1152,10 +1215,8 @@ function SideNav({
   onFunctionSelect,
   onOverview,
   overviewLoading,
-  onHotspots,
-  hotspotsLoading,
-  onDeadCode,
-  deadCodeLoading,
+  onInsights,
+  insightsLoading,
   showUnusedNodes,
   onToggleUnused,
   unusedCount,
@@ -1245,26 +1306,15 @@ function SideNav({
             <span className={railLabel}>Overview</span>
           </button>
           <button
-            onClick={onHotspots}
-            disabled={hotspotsLoading}
+            onClick={onInsights}
+            disabled={insightsLoading}
             className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
-            title="Find hotspot functions"
+            title="Code insights — hotspots & dead code"
           >
-            <span className={`${railIcon} ${hotspotsLoading ? 'animate-spin' : ''}`}>
-              {hotspotsLoading ? 'progress_activity' : 'local_fire_department'}
+            <span className={`${railIcon} ${insightsLoading ? 'animate-spin' : ''}`}>
+              {insightsLoading ? 'progress_activity' : 'insights'}
             </span>
-            <span className={railLabel}>Hotspots</span>
-          </button>
-          <button
-            onClick={onDeadCode}
-            disabled={deadCodeLoading}
-            className={`${railBtnBase} text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive disabled:opacity-50`}
-            title="Find dead code"
-          >
-            <span className={`${railIcon} ${deadCodeLoading ? 'animate-spin' : ''}`}>
-              {deadCodeLoading ? 'progress_activity' : 'delete_sweep'}
-            </span>
-            <span className={railLabel}>Dead Code</span>
+            <span className={railLabel}>Insights</span>
           </button>
 
           <div className="w-8 h-px bg-gray-200 my-1" />
