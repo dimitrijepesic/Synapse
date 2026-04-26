@@ -1,4 +1,4 @@
-[ ] - otkohorisati kohor
+[x] - otkohorisati kohor
 [ ] - landing page
 [ ] - ai generisanje tagova za grupisanje u celine ~ on mount
 [ ] - srediti boje i ikonice
