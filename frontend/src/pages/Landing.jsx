@@ -1,6 +1,6 @@
 import { Link } from 'react-router-dom';
 import CallGraphBackground from '../components/CallGraphBackground/CallGraphBackground';
-import GitHubAccount from '../components/Layout/GitHubAccount';
+import { GitHubAccount } from '../components/Layout';
 
 function ImportCard() {
   return (
@@ -85,16 +85,16 @@ export default function Landing() {
         {/* Hero — fills viewport so 'Precision Mapping' is below the fold */}
         <section className="min-h-[calc(100vh-64px)] mt-16 flex flex-col items-center justify-center text-center px-8">
           <h1 className="brand-title-gradient text-6xl md:text-7xl font-normal tracking-tight max-w-5xl mb-6 leading-tight">
-            Your codebase, <em className="italic">as a graph</em>.
+            Stop guessing context. Start seeing the <em className="italic">bigger picture</em>.
           </h1>
           <p className="text-lg text-gray-500 max-w-2xl mb-8 leading-relaxed">
             Synapse parses your repository with tree-sitter and renders an interactive call graph. Trace execution paths, surface dead code, and onboard onto unfamiliar codebases in minutes.
           </p>
-          <div className="flex gap-4">
-            <Link to="/home" className="bg-deep-olive text-white px-6 py-3 rounded text-sm font-semibold hover:bg-deep-olive/90 transition-colors">
+          <div className="flex gap-4 items-stretch">
+            <Link to="/home" className="bg-deep-olive text-white px-6 py-3 rounded text-sm font-semibold hover:bg-deep-olive/90 transition-colors inline-flex items-center justify-center leading-none">
               Import your first project
             </Link>
-            <Link to="/workspace/call-graph" className="bg-transparent border border-gray-300 text-deep-olive px-6 py-3 rounded text-sm font-semibold hover:border-soft-sage hover:text-soft-sage transition-colors flex items-center gap-2">
+            <Link to="/workspace/call-graph" className="bg-transparent border border-gray-300 text-deep-olive px-6 py-3 rounded text-sm font-semibold hover:border-soft-sage hover:text-soft-sage transition-colors inline-flex items-center justify-center gap-2 leading-none">
               <span className="material-symbols-outlined text-[18px]">play_circle</span>
               Try a sample repo
             </Link>
