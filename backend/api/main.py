@@ -47,6 +47,9 @@ GRAPH: dict = {}
 # Cached cluster results keyed by graph_id
 CLUSTERS: dict[str, dict] = {}
 
+# Cached AI high-level cluster results keyed by graph_id
+AI_CLUSTERS: dict[str, dict] = {}
+
 # Live job state for /analyze, keyed by graph_id. Polled by the frontend
 # while a long-running clone+parse is in flight.
 JOBS: dict[str, dict] = {}
@@ -702,6 +705,21 @@ def get_clusters(graph_id: str, ai_labels: bool = False):
             pass  # LLM unavailable, keep heuristic labels
 
     CLUSTERS[graph_id] = result
+    return result
+
+
+@app.get("/graph/{graph_id}/ai-clusters")
+def get_ai_clusters(graph_id: str):
+    g = GRAPHS.get(graph_id)
+    if g is None:
+        raise HTTPException(404, f"Unknown graph: {graph_id}. Available: {list(GRAPHS.keys())}")
+
+    if graph_id in AI_CLUSTERS:
+        return AI_CLUSTERS[graph_id]
+
+    from ir_compiler.clustering import compute_ai_clusters
+    result = compute_ai_clusters(g)
+    AI_CLUSTERS[graph_id] = result
     return result
 
 

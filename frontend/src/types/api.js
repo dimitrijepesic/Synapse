@@ -96,6 +96,7 @@ export const ENDPOINTS = {
   llmOverview: "/llm/overview",
   llmImpactNarrative: "/llm/impact-narrative",
   clusters: (graphId) => `/graph/${graphId}/clusters`,
+  aiClusters: (graphId) => `/graph/${graphId}/ai-clusters`,
   filterOptions: (graphId) => `/graph/${graphId}/filter-options`,
   filter: (graphId) => `/graph/${graphId}/filter`,
 };

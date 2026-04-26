@@ -290,3 +290,241 @@ Examples:
             pass
 
     return clusters
+
+
+# ─── AI high-level clustering ────────────────────────────────────────────────
+
+import json as _json
+
+
+def compute_ai_clusters(graph: dict) -> dict:
+    """
+    Use an LLM to group all functions into a few high-level architectural
+    clusters (e.g. "API Layer", "Data Access", "Business Logic").
+
+    Returns the same shape as compute_clusters() so the frontend can reuse
+    the cluster rendering pipeline.
+    """
+    try:
+        from llm.cache import cached_complete
+    except ImportError:
+        return _fallback_ai_clusters(graph)
+
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    if not nodes:
+        return {"tree": [], "clusters": [], "cluster_edges": [], "node_cluster_map": {}}
+
+    # Build a compact summary for the LLM: function name, file, who it calls
+    callees_map: dict[str, list[str]] = defaultdict(list)
+    for e in edges:
+        if e["source"] != e["target"]:
+            callees_map[e["source"]].append(e["target"])
+
+    lines = []
+    for n in nodes:
+        name = n.get("qualified_name") or n.get("name") or n["id"]
+        file = n.get("file", "?")
+        calls = callees_map.get(n["id"], [])
+        call_names = []
+        for cid in calls[:5]:
+            parts = cid.split(":", 3)
+            call_names.append(parts[2] if len(parts) >= 3 else cid)
+        calls_str = ", ".join(call_names) if call_names else "none"
+        lines.append(f"- {name} ({file}) -> calls: {calls_str}")
+
+    func_listing = "\n".join(lines[:120])  # cap to avoid token overflow
+    node_count = len(nodes)
+
+    SYSTEM = """You are a senior software architect. Given a list of functions in a codebase with their call relationships, group ALL of them into 3-7 high-level architectural clusters.
+
+Each cluster should represent a distinct responsibility: e.g. "API Layer", "Data Access", "Business Logic", "Authentication", "Utilities", "Configuration", "Error Handling", etc.
+
+Reply with ONLY valid JSON — an array of objects:
+[
+  {
+    "label": "Cluster Name",
+    "description": "One sentence describing this cluster's responsibility",
+    "function_names": ["qualifiedName1", "qualifiedName2", ...]
+  }
+]
+
+Rules:
+- Every function MUST appear in exactly one cluster
+- Use 3-7 clusters (fewer for small codebases, more for large ones)
+- Labels should be 1-3 words, title case
+- Group by architectural responsibility, NOT by file
+"""
+
+    user_prompt = f"""Codebase has {node_count} functions. Here are the functions and their call relationships:
+
+{func_listing}
+
+Group ALL these functions into high-level architectural clusters."""
+
+    # Build content sig from first few function names for caching
+    sig_names = [n.get("qualified_name", n["id"]) for n in nodes[:15]]
+    sig = "|".join(sig_names)
+
+    try:
+        resp = cached_complete(
+            use_case="ai_cluster",
+            params={"node_count": node_count},
+            content_signature=sig,
+            system=SYSTEM,
+            user=user_prompt,
+            max_tokens=2000,
+        )
+        return _parse_ai_cluster_response(resp.text, nodes, edges)
+    except Exception:
+        return _fallback_ai_clusters(graph)
+
+
+def _parse_ai_cluster_response(
+    text: str, nodes: list[dict], edges: list[dict]
+) -> dict:
+    """Parse the LLM JSON response into the standard cluster format."""
+    # Strip markdown fences if present
+    cleaned = text.strip()
+    if cleaned.startswith("```"):
+        cleaned = cleaned.split("\n", 1)[1] if "\n" in cleaned else cleaned[3:]
+    if cleaned.endswith("```"):
+        cleaned = cleaned[: cleaned.rfind("```")]
+    cleaned = cleaned.strip()
+
+    raw_clusters = _json.loads(cleaned)
+
+    # Build a lookup: qualified_name -> node
+    by_qname: dict[str, dict] = {}
+    by_short_name: dict[str, dict] = {}
+    for n in nodes:
+        qn = n.get("qualified_name") or n.get("name") or n["id"]
+        by_qname[qn] = n
+        # Also index by short name (last part after dots/colons)
+        short = qn.rsplit(".", 1)[-1].rsplit(":", 1)[-1]
+        by_short_name.setdefault(short, n)
+
+    assigned: set[str] = set()
+    clusters: list[dict] = []
+    node_cluster_map: dict[str, str] = {}
+
+    for i, rc in enumerate(raw_clusters):
+        label = rc.get("label", f"Group {i + 1}")
+        desc = rc.get("description", "")
+        cluster_id = f"ai:{_slugify(label)}"
+        node_ids: list[str] = []
+
+        for fname in rc.get("function_names", []):
+            # Try exact match first, then short name
+            n = by_qname.get(fname) or by_short_name.get(fname)
+            if n and n["id"] not in assigned:
+                node_ids.append(n["id"])
+                assigned.add(n["id"])
+
+        if not node_ids:
+            continue
+
+        # Count internal edges
+        nid_set = set(node_ids)
+        internal_edges = sum(
+            1 for e in edges
+            if e["source"] in nid_set and e["target"] in nid_set and e["source"] != e["target"]
+        )
+
+        cat_breakdown: dict[str, int] = defaultdict(int)
+        for nid in node_ids:
+            n = next((nd for nd in nodes if nd["id"] == nid), None)
+            if n:
+                cat_breakdown[n.get("category", "source")] += 1
+
+        clusters.append({
+            "id": cluster_id,
+            "label": label,
+            "ai_label": label,
+            "description": desc,
+            "kind": "ai",
+            "node_ids": node_ids,
+            "node_count": len(node_ids),
+            "internal_edge_count": internal_edges,
+            "category_breakdown": dict(cat_breakdown),
+        })
+        for nid in node_ids:
+            node_cluster_map[nid] = cluster_id
+
+    # Sweep unassigned nodes into a "Miscellaneous" cluster
+    unassigned = [n["id"] for n in nodes if n["id"] not in assigned]
+    if unassigned:
+        nid_set = set(unassigned)
+        internal_edges = sum(
+            1 for e in edges
+            if e["source"] in nid_set and e["target"] in nid_set and e["source"] != e["target"]
+        )
+        misc_id = "ai:miscellaneous"
+        clusters.append({
+            "id": misc_id,
+            "label": "Miscellaneous",
+            "ai_label": "Miscellaneous",
+            "description": "Functions not matched to a specific cluster",
+            "kind": "ai",
+            "node_ids": unassigned,
+            "node_count": len(unassigned),
+            "internal_edge_count": internal_edges,
+            "category_breakdown": {},
+        })
+        for nid in unassigned:
+            node_cluster_map[nid] = misc_id
+
+    cluster_edges = _compute_cluster_edges(edges, node_cluster_map)
+
+    return {
+        "tree": [],
+        "clusters": clusters,
+        "cluster_edges": cluster_edges,
+        "node_cluster_map": node_cluster_map,
+    }
+
+
+def _fallback_ai_clusters(graph: dict) -> dict:
+    """
+    Heuristic fallback when the LLM is unavailable: group by top-level
+    directory as a rough approximation of architectural layers.
+    """
+    nodes = graph.get("nodes", [])
+    edges = graph.get("edges", [])
+    if not nodes:
+        return {"tree": [], "clusters": [], "cluster_edges": [], "node_cluster_map": {}}
+
+    by_dir: dict[str, list[str]] = defaultdict(list)
+    for n in nodes:
+        d = _get_directory(n.get("file", "_root"))
+        by_dir[d].append(n["id"])
+
+    clusters = []
+    node_cluster_map = {}
+    for d, nids in by_dir.items():
+        cid = f"ai:{_slugify(d)}"
+        nid_set = set(nids)
+        internal = sum(
+            1 for e in edges
+            if e["source"] in nid_set and e["target"] in nid_set and e["source"] != e["target"]
+        )
+        clusters.append({
+            "id": cid,
+            "label": _dir_label(d),
+            "ai_label": _dir_label(d),
+            "kind": "ai",
+            "node_ids": nids,
+            "node_count": len(nids),
+            "internal_edge_count": internal,
+            "category_breakdown": {},
+        })
+        for nid in nids:
+            node_cluster_map[nid] = cid
+
+    cluster_edges = _compute_cluster_edges(edges, node_cluster_map)
+    return {
+        "tree": [],
+        "clusters": clusters,
+        "cluster_edges": cluster_edges,
+        "node_cluster_map": node_cluster_map,
+    }

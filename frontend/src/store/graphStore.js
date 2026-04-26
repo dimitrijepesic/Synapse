@@ -7,6 +7,8 @@ const COMPACT_NODE_WIDTH = 200;
 const COMPACT_NODE_HEIGHT = 64;
 const LAYOUT_ANIM_MS = 500;
 const CLUSTER_ANIM_MS = 380;
+const PORT_NODE_SIZE = 28;
+const DRILL_ANIM_MS = 420;
 
 let layoutRaf = null;
 let clusterRaf = null;
@@ -36,7 +38,7 @@ function _balanceLayoutAspect(positions, opts = {}) {
   const nodeH = opts.nodeH ?? NODE_HEIGHT;
   const gapX = opts.gapX ?? 80;
   const gapY = opts.gapY ?? 40;
-  const targetAspect = opts.targetAspect ?? 1.0;
+  const targetAspect = opts.targetAspect ?? 1.6;
 
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
   ids.forEach((id) => {
@@ -200,7 +202,7 @@ function _seedClusterPositionsFromMembers(clusters, nodes) {
   return out;
 }
 
-function _tweenLayout({ nodeTargets, clusterTargets, onComplete }, set, get) {
+function _tweenLayout({ nodeTargets, clusterTargets, nodeClusterMap, onComplete }, set, get) {
   if (clusterRaf) cancelAnimationFrame(clusterRaf);
 
   const { nodes, clusterPositions } = get();
@@ -219,24 +221,32 @@ function _tweenLayout({ nodeTargets, clusterTargets, onComplete }, set, get) {
     };
   });
 
+  // Pre-compute node offsets relative to their cluster so member nodes
+  // stay glued to the cluster card during the tween instead of floating
+  // on independent trajectories.
+  const nodeOffsets = {};
+  if (nodeClusterMap) {
+    Object.keys(nodeTargets).forEach((nid) => {
+      const cid = nodeClusterMap[nid];
+      if (!cid || !clusterStarts[cid] || !clusterTargets[cid]) return;
+      const ns = nodeStarts[nid] || nodeTargets[nid];
+      nodeOffsets[nid] = {
+        cid,
+        startDx: ns.x - clusterStarts[cid].x,
+        startDy: ns.y - clusterStarts[cid].y,
+        endDx: nodeTargets[nid].x - clusterTargets[cid].x,
+        endDy: nodeTargets[nid].y - clusterTargets[cid].y,
+      };
+    });
+  }
+
   const t0 = performance.now();
   const tick = (now) => {
     const t = Math.min(1, (now - t0) / CLUSTER_ANIM_MS);
     const k = ease(t);
 
     set((state) => {
-      const newNodes = state.nodes.map((n) => {
-        const s = nodeStarts[n.id];
-        const e = nodeTargets[n.id];
-        if (!s || !e) return n;
-        return {
-          ...n,
-          position: {
-            x: Math.round(s.x + (e.x - s.x) * k),
-            y: Math.round(s.y + (e.y - s.y) * k),
-          },
-        };
-      });
+      // Interpolate cluster positions first so nodes can reference them
       const newClusterPositions = { ...state.clusterPositions };
       Object.keys(clusterTargets).forEach((cid) => {
         const s = clusterStarts[cid];
@@ -248,6 +258,40 @@ function _tweenLayout({ nodeTargets, clusterTargets, onComplete }, set, get) {
           height: Math.round(s.height + (e.height - s.height) * k),
         };
       });
+
+      const newNodes = state.nodes.map((n) => {
+        const s = nodeStarts[n.id];
+        const e = nodeTargets[n.id];
+        if (!s || !e) return n;
+
+        // Cluster member: interpolate as offset from the cluster's
+        // current interpolated position so the node never escapes
+        // the cluster card mid-animation.
+        const off = nodeOffsets[n.id];
+        if (off) {
+          const cp = newClusterPositions[off.cid];
+          if (cp) {
+            const dx = off.startDx + (off.endDx - off.startDx) * k;
+            const dy = off.startDy + (off.endDy - off.startDy) * k;
+            return {
+              ...n,
+              position: {
+                x: Math.round(cp.x + dx),
+                y: Math.round(cp.y + dy),
+              },
+            };
+          }
+        }
+
+        return {
+          ...n,
+          position: {
+            x: Math.round(s.x + (e.x - s.x) * k),
+            y: Math.round(s.y + (e.y - s.y) * k),
+          },
+        };
+      });
+
       return { nodes: newNodes, clusterPositions: newClusterPositions };
     });
 
@@ -287,6 +331,19 @@ const useGraphStore = create((set, get) => ({
   // cluster mode. Used to tween nodes back to their flat layout when cluster
   // view is turned off.
   flatPositions: {},
+
+  // AI high-level cluster state
+  // 'clusterMode' tracks which grouping is active: null = flat, 'package' = file-level, 'ai' = LLM-generated
+  clusterMode: null,
+  aiClusters: null,       // cached AI cluster response from backend
+  aiClusterLoading: false,
+  _packageClusters: null,  // stashed package cluster data so AI mode can swap in/out
+
+  // AI drill-down state (when user clicks an AI cluster to expand it)
+  aiDrilledCluster: null,  // cluster id currently drilled into, or null
+  aiPortNodes: [],         // synthetic port nodes for external connections
+  aiPortEdges: [],         // edges connecting ports ↔ internal nodes
+  aiDrillPositions: {},    // { nodeId/portId: {x,y} } layout for the drill view
 
   // Importance threshold ∈ [0, 1]. Nodes with importance < threshold are
   // hidden in the rendered graph. 0 = show all.
@@ -481,7 +538,8 @@ const useGraphStore = create((set, get) => ({
         });
       }
 
-      const layoutNodes = rawNodes.map((n) => ({ ...n, position: positions[n.id] || { x: 0, y: 0 } }));
+      const balanced = _balanceLayoutAspect(positions, { nodeW: NODE_WIDTH, nodeH: NODE_HEIGHT });
+      const layoutNodes = rawNodes.map((n) => ({ ...n, position: balanced[n.id] || positions[n.id] || { x: 0, y: 0 } }));
 
       set({
         nodes: layoutNodes,
@@ -495,6 +553,14 @@ const useGraphStore = create((set, get) => ({
         // New graph -> stale per-view caches, drop them so each view recomputes.
         viewLayouts: {},
         viewCameras: {},
+        aiClusters: null,
+        aiClusterLoading: false,
+        clusterMode: null,
+        _packageClusters: null,
+        aiDrilledCluster: null,
+        aiPortNodes: [],
+        aiPortEdges: [],
+        aiDrillPositions: {},
       });
     } catch (e) {
       set({ loading: false, error: e.message });
@@ -609,6 +675,7 @@ const useGraphStore = create((set, get) => ({
         clusterEdges: data.cluster_edges || [],
         nodeClusterMap: data.node_cluster_map || {},
         clusterPositions: seed,
+        _packageClusters: data,
       });
       get().layoutClusters({ animate: true });
     } catch (e) {
@@ -621,47 +688,326 @@ const useGraphStore = create((set, get) => ({
     set({ importanceThreshold: v });
   },
 
+  // Shared helper: exit any cluster mode and tween back to flat layout
+  _exitClusterMode: () => {
+    const { clusters, edges, nodes } = get();
+    const layoutTargets = _computeAutoLayoutTargets(nodes, edges);
+    const targetNodes = Object.entries(layoutTargets).map(([id, p]) => ({ id, position: p }));
+    const shrinkTargets = _seedClusterPositionsFromMembers(clusters, targetNodes);
+    const memberToCluster = {};
+    clusters.forEach((c) => {
+      c.node_ids.forEach((nid) => { memberToCluster[nid] = c.id; });
+    });
+    _tweenLayout({
+      nodeTargets: layoutTargets,
+      clusterTargets: shrinkTargets,
+      nodeClusterMap: memberToCluster,
+      onComplete: () => set({ clusterView: false, clusterMode: null, expandedClusters: new Set(), clusterPositions: {}, aiDrilledCluster: null, aiPortNodes: [], aiPortEdges: [], aiDrillPositions: {} }),
+    }, set, get);
+  },
+
+  // Enter a cluster mode ('package' or 'ai') with the given cluster data,
+  // or exit back to flat if already in that mode.
+  _enterClusterMode: (mode, clusterData) => {
+    const { nodes } = get();
+    const snapshot = {};
+    nodes.forEach((n) => {
+      snapshot[n.id] = { x: n.position.x, y: n.position.y };
+    });
+    const seed = clusterData.clusters.length > 0
+      ? _seedClusterPositionsFromMembers(clusterData.clusters, nodes) : {};
+    set({
+      clusterView: true,
+      clusterMode: mode,
+      clusters: clusterData.clusters,
+      clusterTree: clusterData.tree || [],
+      clusterEdges: clusterData.cluster_edges || [],
+      nodeClusterMap: clusterData.node_cluster_map || {},
+      flatPositions: snapshot,
+      expandedClusters: new Set(),
+      clusterPositions: seed,
+    });
+    get().layoutClusters({ animate: true });
+  },
+
   toggleClusterView: () => {
-    const { clusterView, clusters, graphId, nodes } = get();
+    const { clusterView, clusterMode, _packageClusters, graphId, nodes } = get();
+
+    // If currently in AI cluster mode, exit that first
+    if (clusterView && clusterMode === 'ai') {
+      get()._exitClusterMode();
+      return;
+    }
+
     const next = !clusterView;
     if (next && !graphId) return;
 
     if (next) {
-      // Entering cluster mode — snapshot current flat positions for the
-      // future "back to flat" tween, and seed cluster cards at member
-      // centroids (small) so they grow into their dagre slots.
-      const snapshot = {};
-      nodes.forEach((n) => {
-        snapshot[n.id] = { x: n.position.x, y: n.position.y };
-      });
-      const seed = clusters.length > 0 ? _seedClusterPositionsFromMembers(clusters, nodes) : {};
-      set({
-        clusterView: true,
-        flatPositions: snapshot,
-        expandedClusters: new Set(),
-        clusterPositions: seed,
-      });
-
-      if (clusters.length === 0) {
-        get().loadClusters();
+      // Entering package cluster mode — use stashed data if available
+      if (_packageClusters) {
+        get()._enterClusterMode('package', _packageClusters);
       } else {
-        get().layoutClusters({ animate: true });
+        // No cached package data — snapshot positions and load
+        const snapshot = {};
+        nodes.forEach((n) => {
+          snapshot[n.id] = { x: n.position.x, y: n.position.y };
+        });
+        set({
+          clusterView: true,
+          clusterMode: 'package',
+          flatPositions: snapshot,
+          expandedClusters: new Set(),
+          clusterPositions: {},
+        });
+        get().loadClusters();
       }
     } else {
-      // Leaving cluster mode — recompute the auto-layout fresh and tween
-      // nodes there (so the user lands in a tidy graph regardless of what
-      // the flat snapshot was). Cluster cards shrink toward each member set's
-      // centroid in the new layout, then unmount.
-      const { clusters, edges, nodes } = get();
-      const layoutTargets = _computeAutoLayoutTargets(nodes, edges);
-      const targetNodes = Object.entries(layoutTargets).map(([id, p]) => ({ id, position: p }));
-      const shrinkTargets = _seedClusterPositionsFromMembers(clusters, targetNodes);
-      _tweenLayout({
-        nodeTargets: layoutTargets,
-        clusterTargets: shrinkTargets,
-        onComplete: () => set({ clusterView: false, expandedClusters: new Set(), clusterPositions: {} }),
-      }, set, get);
+      get()._exitClusterMode();
     }
+  },
+
+  toggleAiClusterView: async () => {
+    const { clusterView, clusterMode, graphId, aiClusters } = get();
+
+    // If already in AI mode, exit
+    if (clusterView && clusterMode === 'ai') {
+      get()._exitClusterMode();
+      return;
+    }
+
+    if (!graphId) return;
+
+    // If in package mode, exit first (instant), then enter AI mode
+    if (clusterView && clusterMode === 'package') {
+      get()._exitClusterMode();
+      // Wait for the exit animation to complete before entering AI mode
+      await new Promise((r) => setTimeout(r, CLUSTER_ANIM_MS + 50));
+    }
+
+    // Use cached AI clusters if available
+    if (aiClusters) {
+      get()._enterClusterMode('ai', aiClusters);
+      return;
+    }
+
+    // Fetch from backend
+    set({ aiClusterLoading: true });
+    try {
+      const res = await fetch(`${API_BASE}/graph/${graphId}/ai-clusters`);
+      if (!res.ok) throw new Error(`AI clustering failed: ${res.status}`);
+      const data = await res.json();
+      set({ aiClusters: data, aiClusterLoading: false });
+      get()._enterClusterMode('ai', data);
+    } catch (e) {
+      set({ aiClusterLoading: false });
+      console.warn('AI clustering error:', e);
+    }
+  },
+
+  // ── AI drill-down ──────────────────────────────────────────────────
+
+  drillIntoAiCluster: (clusterId) => {
+    const { clusters, clusterPositions, edges, nodes, nodeClusterMap } = get();
+    const cluster = clusters.find((c) => c.id === clusterId);
+    if (!cluster) return;
+
+    const clusterNodeIds = new Set(cluster.node_ids);
+    const internalNodes = nodes.filter((n) => clusterNodeIds.has(n.id));
+
+    // ── Build port nodes for external connections ──
+    const incomingMap = new Map(); // extClusterId -> { nodeIds: Set, count }
+    const outgoingMap = new Map();
+
+    edges.forEach((e) => {
+      if (e.source === e.target) return;
+      const srcIn = clusterNodeIds.has(e.source);
+      const tgtIn = clusterNodeIds.has(e.target);
+      if (srcIn && !tgtIn) {
+        const ext = nodeClusterMap[e.target];
+        if (!ext) return;
+        if (!outgoingMap.has(ext)) outgoingMap.set(ext, { nodeIds: new Set(), count: 0 });
+        outgoingMap.get(ext).nodeIds.add(e.source);
+        outgoingMap.get(ext).count++;
+      } else if (!srcIn && tgtIn) {
+        const ext = nodeClusterMap[e.source];
+        if (!ext) return;
+        if (!incomingMap.has(ext)) incomingMap.set(ext, { nodeIds: new Set(), count: 0 });
+        incomingMap.get(ext).nodeIds.add(e.target);
+        incomingMap.get(ext).count++;
+      }
+    });
+
+    const portNodes = [];
+    const portEdges = [];
+
+    incomingMap.forEach((data, extId) => {
+      const extCluster = clusters.find((c) => c.id === extId);
+      const portId = `port:in:${extId}`;
+      portNodes.push({
+        id: portId, type: 'port', direction: 'incoming',
+        clusterId: extId,
+        clusterLabel: extCluster?.ai_label || extCluster?.label || extId,
+        edgeCount: data.count,
+      });
+      data.nodeIds.forEach((nid) => {
+        portEdges.push({ id: `pe-${portId}-${nid}`, source: portId, target: nid, type: 'port' });
+      });
+    });
+
+    outgoingMap.forEach((data, extId) => {
+      const extCluster = clusters.find((c) => c.id === extId);
+      const portId = `port:out:${extId}`;
+      portNodes.push({
+        id: portId, type: 'port', direction: 'outgoing',
+        clusterId: extId,
+        clusterLabel: extCluster?.ai_label || extCluster?.label || extId,
+        edgeCount: data.count,
+      });
+      data.nodeIds.forEach((nid) => {
+        portEdges.push({ id: `pe-${nid}-${portId}`, source: nid, target: portId, type: 'port' });
+      });
+    });
+
+    // ── Dagre layout: internal nodes + port nodes ──
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: 'LR', nodesep: 50, ranksep: 120, marginx: 60, marginy: 60, acyclicer: 'greedy', ranker: 'tight-tree' });
+    g.setDefaultEdgeLabel(() => ({}));
+
+    internalNodes.forEach((n) => g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT }));
+    portNodes.forEach((p) => g.setNode(p.id, { width: PORT_NODE_SIZE, height: PORT_NODE_SIZE }));
+
+    // Internal edges
+    edges.forEach((e) => {
+      if (e.source !== e.target && clusterNodeIds.has(e.source) && clusterNodeIds.has(e.target)) {
+        g.setEdge(e.source, e.target);
+      }
+    });
+    // Port edges
+    portEdges.forEach((pe) => g.setEdge(pe.source, pe.target));
+
+    dagre.layout(g);
+
+    const positions = {};
+    internalNodes.forEach((n) => {
+      const p = g.node(n.id);
+      if (p) positions[n.id] = { x: Math.round(p.x - NODE_WIDTH / 2), y: Math.round(p.y - NODE_HEIGHT / 2) };
+    });
+    portNodes.forEach((pn) => {
+      const p = g.node(pn.id);
+      if (p) positions[pn.id] = { x: Math.round(p.x - PORT_NODE_SIZE / 2), y: Math.round(p.y - PORT_NODE_SIZE / 2) };
+    });
+
+    // Balance the layout
+    const balanced = _balanceLayoutAspect(positions, { nodeW: NODE_WIDTH, nodeH: NODE_HEIGHT });
+
+    // ── Animate: nodes start at clicked cluster center, spread to dagre positions ──
+    const cp = clusterPositions[clusterId];
+    const cx = cp ? cp.x + (cp.width || 0) / 2 : 400;
+    const cy = cp ? cp.y + (cp.height || 0) / 2 : 300;
+
+    // Place all nodes at cluster center first
+    set((state) => ({
+      aiDrilledCluster: clusterId,
+      aiPortNodes: portNodes,
+      aiPortEdges: portEdges,
+      aiDrillPositions: balanced,
+      nodes: state.nodes.map((n) => {
+        if (!clusterNodeIds.has(n.id)) return n;
+        return { ...n, position: { x: cx - NODE_WIDTH / 2, y: cy - NODE_HEIGHT / 2 } };
+      }),
+    }));
+
+    // Tween from center to dagre positions
+    const starts = {};
+    internalNodes.forEach((n) => {
+      starts[n.id] = { x: cx - NODE_WIDTH / 2, y: cy - NODE_HEIGHT / 2 };
+    });
+    portNodes.forEach((pn) => {
+      starts[pn.id] = { x: cx - PORT_NODE_SIZE / 2, y: cy - PORT_NODE_SIZE / 2 };
+    });
+
+    if (layoutRaf) cancelAnimationFrame(layoutRaf);
+    const t0 = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / DRILL_ANIM_MS);
+      const k = ease(t);
+      const drillPos = {};
+      Object.keys(balanced).forEach((id) => {
+        const s = starts[id];
+        const e = balanced[id];
+        if (!s || !e) return;
+        drillPos[id] = {
+          x: Math.round(s.x + (e.x - s.x) * k),
+          y: Math.round(s.y + (e.y - s.y) * k),
+        };
+      });
+      set((state) => ({
+        aiDrillPositions: drillPos,
+        nodes: state.nodes.map((n) => {
+          if (!drillPos[n.id]) return n;
+          return { ...n, position: drillPos[n.id] };
+        }),
+      }));
+      if (t < 1) {
+        layoutRaf = requestAnimationFrame(tick);
+      } else {
+        layoutRaf = null;
+      }
+    };
+    layoutRaf = requestAnimationFrame(tick);
+  },
+
+  exitAiDrill: () => {
+    const { aiDrilledCluster, clusters, nodes, clusterPositions } = get();
+    if (!aiDrilledCluster) return;
+
+    const cluster = clusters.find((c) => c.id === aiDrilledCluster);
+    const clusterNodeIds = new Set(cluster ? cluster.node_ids : []);
+
+    // Animate nodes back to cluster center, then clear drill state
+    const cp = clusterPositions[aiDrilledCluster];
+    const cx = cp ? cp.x + (cp.width || 0) / 2 : 400;
+    const cy = cp ? cp.y + (cp.height || 0) / 2 : 300;
+    const targetPos = { x: cx - NODE_WIDTH / 2, y: cy - NODE_HEIGHT / 2 };
+
+    const starts = {};
+    nodes.forEach((n) => {
+      if (clusterNodeIds.has(n.id)) starts[n.id] = { ...n.position };
+    });
+    // Also collapse port positions
+    const { aiPortNodes, aiDrillPositions } = get();
+    aiPortNodes.forEach((pn) => {
+      if (aiDrillPositions[pn.id]) starts[pn.id] = { ...aiDrillPositions[pn.id] };
+    });
+
+    if (layoutRaf) cancelAnimationFrame(layoutRaf);
+    const t0 = performance.now();
+    const tick = (now) => {
+      const t = Math.min(1, (now - t0) / DRILL_ANIM_MS);
+      const k = ease(t);
+      const drillPos = {};
+      Object.keys(starts).forEach((id) => {
+        const s = starts[id];
+        drillPos[id] = {
+          x: Math.round(s.x + (targetPos.x - s.x) * k),
+          y: Math.round(s.y + (targetPos.y - s.y) * k),
+        };
+      });
+      set((state) => ({
+        aiDrillPositions: drillPos,
+        nodes: state.nodes.map((n) => {
+          if (!drillPos[n.id]) return n;
+          return { ...n, position: drillPos[n.id] };
+        }),
+      }));
+      if (t < 1) {
+        layoutRaf = requestAnimationFrame(tick);
+      } else {
+        layoutRaf = null;
+        set({ aiDrilledCluster: null, aiPortNodes: [], aiPortEdges: [], aiDrillPositions: {} });
+      }
+    };
+    layoutRaf = requestAnimationFrame(tick);
   },
 
   toggleCluster: (clusterId) => {
@@ -707,16 +1053,39 @@ const useGraphStore = create((set, get) => ({
     clusterEdges.forEach((e) => g.setEdge(e.source, e.target));
     dagre.layout(g);
 
-    const clusterTargets = {};
     const nodeTargets = {};
 
+    // Collect raw dagre positions for clusters
+    const rawClusterPos = {};
+    const clusterSizes = {};
     clusters.forEach((c) => {
       const p = g.node(c.id);
       if (!p) return;
       const w = p.width;
       const h = p.height;
-      const cx = Math.round(p.x - w / 2);
-      const cy = Math.round(p.y - h / 2);
+      rawClusterPos[c.id] = { x: Math.round(p.x - w / 2), y: Math.round(p.y - h / 2) };
+      clusterSizes[c.id] = { w, h };
+    });
+
+    // Only apply aspect balancing when all clusters are collapsed (uniform
+    // size). When any cluster is expanded, dagre already accounts for the
+    // variable sizes and avoids overlaps — re-balancing with a fixed nodeW/H
+    // would break that.
+    const allCollapsed = expandedClusters.size === 0;
+    const finalClusterPos = allCollapsed
+      ? _balanceLayoutAspect(rawClusterPos, {
+          nodeW: CLUSTER_NODE_WIDTH,
+          nodeH: CLUSTER_NODE_HEIGHT,
+        })
+      : rawClusterPos;
+
+    const clusterTargets = {};
+    clusters.forEach((c) => {
+      const bp = finalClusterPos[c.id] || rawClusterPos[c.id];
+      if (!bp) return;
+      const { w, h } = clusterSizes[c.id] || { w: CLUSTER_NODE_WIDTH, h: CLUSTER_NODE_HEIGHT };
+      const cx = bp.x;
+      const cy = bp.y;
       clusterTargets[c.id] = { x: cx, y: cy, width: w, height: h };
 
       // For expanded clusters: lay member nodes out in a grid inside the box.
@@ -750,7 +1119,12 @@ const useGraphStore = create((set, get) => ({
       }));
       return;
     }
-    _tweenLayout({ nodeTargets, clusterTargets }, set, get);
+    // Build node→cluster map so the tween keeps members glued to their card
+    const memberToCluster = {};
+    clusters.forEach((c) => {
+      c.node_ids.forEach((nid) => { memberToCluster[nid] = c.id; });
+    });
+    _tweenLayout({ nodeTargets, clusterTargets, nodeClusterMap: memberToCluster }, set, get);
   },
 
   autoLayout: ({ animate = true } = {}) => {

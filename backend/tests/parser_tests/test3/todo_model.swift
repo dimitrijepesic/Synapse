@@ -19,9 +19,19 @@ struct Todo {
         self.isCompleted = false
     }
 
-    func withPriority(_ priority: Priority) -> Todo {
-        var copy = self
-        copy.priority = priority
-        return copy
+    mutating func complete() {
+        isCompleted = true
+    }
+}
+
+struct User {
+    let id: UUID
+    var username: String
+    var isAdmin: Bool
+
+    init(username: String, isAdmin: Bool = false) {
+        self.id = UUID()
+        self.username = username
+        self.isAdmin = isAdmin
     }
 }

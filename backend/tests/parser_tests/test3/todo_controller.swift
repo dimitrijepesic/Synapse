@@ -3,34 +3,45 @@
 import Foundation
 
 class TodoController {
-    private let service: TodoService
+    private let todoService: TodoService
+    private let auth: AuthManager
 
-    init(service: TodoService) {
-        self.service = service
+    init(todoService: TodoService, auth: AuthManager) {
+        self.todoService = todoService
+        self.auth = auth
     }
 
-    func seedDefaults() {
-        let items: [Todo] = [
-            Todo(title: "Design state model", priority: .high),
-            Todo(title: "Wire up reducers", priority: .medium),
-            Todo(title: "Write tests", priority: .low),
-        ]
-        service.bulkAdd(items)
+    func handleCreate(title: String, priority: Priority, token: String) -> Todo? {
+        guard auth.validate(token) != nil else { return nil }
+        return todoService.create(title: title, priority: priority)
     }
 
-    func promoteAll() {
-        let promoted = service.all().map { $0.withPriority(.high) }
-        service.bulkAdd(promoted)
+    func handleComplete(todoId: UUID, token: String) -> Todo? {
+        guard auth.validate(token) != nil else { return nil }
+        return todoService.complete(id: todoId)
     }
 
-    func completeHighPriority() -> [Todo] {
-        let targets = service.highPriority()
-        return targets.compactMap { service.complete(id: $0.id) }
+    func handleList(token: String) -> [Todo] {
+        guard auth.validate(token) != nil else { return [] }
+        return todoService.listAll()
+    }
+}
+
+class UserController {
+    private let userService: UserService
+    private let auth: AuthManager
+
+    init(userService: UserService, auth: AuthManager) {
+        self.userService = userService
+        self.auth = auth
     }
 
-    func report() -> String {
-        let all = service.all()
-        let done = all.filter { $0.isCompleted }
-        return "total: \(all.count), done: \(done.count)"
+    func handleRegister(username: String) -> User {
+        return userService.register(username: username)
+    }
+
+    func handleLogin(username: String) -> String? {
+        guard let user = userService.findByUsername(username) else { return nil }
+        return auth.issueToken(for: user)
     }
 }
