@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { Header, Footer } from '../components/Layout';
 import { API_BASE } from '../types/api';
@@ -8,17 +8,62 @@ export default function Home() {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
   const [dragOver, setDragOver] = useState(false);
+  const [user, setUser] = useState(null);
+  const [repos, setRepos] = useState(null);
+  const [reposLoading, setReposLoading] = useState(false);
+  const [repoFilter, setRepoFilter] = useState('');
   const navigate = useNavigate();
 
-  const handleAnalyze = async () => {
-    const url = repoUrl.trim();
-    if (!url) return;
+  // Check existing session on mount
+  useEffect(() => {
+    let cancelled = false;
+    fetch(`${API_BASE}/auth/me`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : null))
+      .then((data) => {
+        if (!cancelled && data?.user) setUser(data.user);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, []);
+
+  // Fetch repos once authenticated
+  useEffect(() => {
+    if (!user) return;
+    let cancelled = false;
+    setReposLoading(true);
+    fetch(`${API_BASE}/auth/github/repos`, { credentials: 'include' })
+      .then((r) => (r.ok ? r.json() : Promise.reject(r)))
+      .then((data) => { if (!cancelled) setRepos(data.repos || []); })
+      .catch(() => { if (!cancelled) setError('Failed to load repositories.'); })
+      .finally(() => { if (!cancelled) setReposLoading(false); });
+    return () => { cancelled = true; };
+  }, [user]);
+
+  const handleGithubLogin = async () => {
+    try {
+      const res = await fetch(`${API_BASE}/auth/github/login`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Login init failed');
+      const { url } = await res.json();
+      window.location.href = url;
+    } catch (e) {
+      setError(e.message);
+    }
+  };
+
+  const handleLogout = async () => {
+    await fetch(`${API_BASE}/auth/logout`, { method: 'POST', credentials: 'include' });
+    setUser(null);
+    setRepos(null);
+  };
+
+  const analyzeRepoUrl = async (url) => {
     setLoading(true);
     setError('');
     try {
       const res = await fetch(`${API_BASE}/analyze`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
+        credentials: 'include',
         body: JSON.stringify({ repo_url: url }),
       });
       if (!res.ok) {
@@ -32,6 +77,11 @@ export default function Home() {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handleAnalyze = () => {
+    const url = repoUrl.trim();
+    if (url) analyzeRepoUrl(url);
   };
 
   const handleKeyDown = (e) => {
@@ -54,6 +104,7 @@ export default function Home() {
       formData.append('file', file);
       const res = await fetch(`${API_BASE}/upload`, {
         method: 'POST',
+        credentials: 'include',
         body: formData,
       });
       if (!res.ok) {
@@ -84,6 +135,10 @@ export default function Home() {
   const handleDragLeave = () => {
     setDragOver(false);
   };
+
+  const filteredRepos = (repos || []).filter((r) =>
+    !repoFilter.trim() || r.full_name.toLowerCase().includes(repoFilter.trim().toLowerCase())
+  );
 
   return (
     <div className="bg-gray-50 text-on-surface min-h-screen flex flex-col font-body-md text-body-md antialiased selection:bg-primary-container selection:text-on-primary-container">
@@ -140,17 +195,80 @@ export default function Home() {
               <div className="h-px bg-gray-200 flex-grow"></div>
             </div>
 
-            {/* GitHub Auth */}
-            <button className="w-full flex items-center justify-center gap-3 bg-gray-900 py-3.5 px-6 rounded-lg hover:bg-gray-800 transition-colors active:scale-95 shadow-sm">
-              <svg aria-hidden="true" className="w-5 h-5 fill-white" viewBox="0 0 24 24">
-                <path
-                  clipRule="evenodd"
-                  d="M12 2C6.477 2 2 6.463 2 11.97c0 4.404 2.865 8.14 6.839 9.458.5.092.682-.216.682-.48 0-.236-.008-.864-.013-1.695-2.782.602-3.369-1.337-3.369-1.337-.454-1.151-1.11-1.458-1.11-1.458-.908-.618.069-.606.069-.606 1.003.07 1.531 1.027 1.531 1.027.892 1.524 2.341 1.084 2.91.828.092-.643.35-1.083.636-1.332-2.22-.251-4.555-1.107-4.555-4.927 0-1.088.39-1.976 1.029-2.669-.103-.252-.446-1.266.098-2.631 0 0 .84-.268 2.75 1.022A9.606 9.606 0 0112 6.82c.85.004 1.705.114 2.504.336 1.909-1.29 2.747-1.022 2.747-1.022.546 1.365.202 2.379.1 2.631.64.693 1.028 1.581 1.028 2.669 0 3.83-2.339 4.673-4.565 4.919.359.307.678.915.678 1.846 0 1.332-.012 2.407-.012 2.734 0 .267.18.577.688.48C19.137 20.107 22 16.37 22 11.97 22 6.463 17.522 2 12 2z"
-                  fillRule="evenodd"
-                />
-              </svg>
-              <span className="text-sm font-medium text-white">Auth with GitHub</span>
-            </button>
+            {/* GitHub Auth / Repo Picker */}
+            {!user ? (
+              <button
+                onClick={handleGithubLogin}
+                className="w-full flex items-center justify-center gap-3 bg-gray-900 py-3.5 px-6 rounded-lg hover:bg-gray-800 transition-colors active:scale-95 shadow-sm"
+              >
+                <svg aria-hidden="true" className="w-5 h-5 fill-white" viewBox="0 0 24 24">
+                  <path
+                    clipRule="evenodd"
+                    d="M12 2C6.477 2 2 6.463 2 11.97c0 4.404 2.865 8.14 6.839 9.458.5.092.682-.216.682-.48 0-.236-.008-.864-.013-1.695-2.782.602-3.369-1.337-3.369-1.337-.454-1.151-1.11-1.458-1.11-1.458-.908-.618.069-.606.069-.606 1.003.07 1.531 1.027 1.531 1.027.892 1.524 2.341 1.084 2.91.828.092-.643.35-1.083.636-1.332-2.22-.251-4.555-1.107-4.555-4.927 0-1.088.39-1.976 1.029-2.669-.103-.252-.446-1.266.098-2.631 0 0 .84-.268 2.75 1.022A9.606 9.606 0 0112 6.82c.85.004 1.705.114 2.504.336 1.909-1.29 2.747-1.022 2.747-1.022.546 1.365.202 2.379.1 2.631.64.693 1.028 1.581 1.028 2.669 0 3.83-2.339 4.673-4.565 4.919.359.307.678.915.678 1.846 0 1.332-.012 2.407-.012 2.734 0 .267.18.577.688.48C19.137 20.107 22 16.37 22 11.97 22 6.463 17.522 2 12 2z"
+                    fillRule="evenodd"
+                  />
+                </svg>
+                <span className="text-sm font-medium text-white">Auth with GitHub</span>
+              </button>
+            ) : (
+              <div className="flex flex-col gap-3">
+                <div className="flex items-center justify-between gap-3 px-3 py-2 rounded-lg bg-gray-50 border border-gray-100">
+                  <div className="flex items-center gap-2 min-w-0">
+                    {user.avatar_url && (
+                      <img src={user.avatar_url} alt="" className="w-6 h-6 rounded-full" />
+                    )}
+                    <span className="text-sm text-gray-800 truncate">
+                      {user.name || user.login}
+                    </span>
+                  </div>
+                  <button
+                    onClick={handleLogout}
+                    className="text-xs text-gray-500 hover:text-gray-800"
+                  >
+                    Sign out
+                  </button>
+                </div>
+
+                <div className="flex flex-col gap-2">
+                  <label className="font-label-sm text-label-sm text-gray-500 uppercase tracking-widest">Your repositories</label>
+                  <input
+                    className="w-full bg-white border border-gray-300 rounded-lg px-3 py-2 text-sm focus:outline-none focus:border-deep-olive focus:ring-1 focus:ring-soft-sage"
+                    placeholder="Filter by name..."
+                    value={repoFilter}
+                    onChange={(e) => setRepoFilter(e.target.value)}
+                    disabled={reposLoading}
+                  />
+                  <div className="border border-gray-200 rounded-lg max-h-64 overflow-y-auto bg-white">
+                    {reposLoading && (
+                      <div className="p-4 text-sm text-gray-500">Loading repositories...</div>
+                    )}
+                    {!reposLoading && filteredRepos.length === 0 && (
+                      <div className="p-4 text-sm text-gray-500">No repositories found.</div>
+                    )}
+                    {!reposLoading && filteredRepos.map((r) => (
+                      <button
+                        key={r.full_name}
+                        disabled={loading}
+                        onClick={() => analyzeRepoUrl(r.html_url || `https://github.com/${r.full_name}`)}
+                        className="w-full flex items-center justify-between gap-3 px-3 py-2 text-left hover:bg-gray-50 border-b border-gray-100 last:border-b-0 disabled:opacity-50"
+                      >
+                        <div className="min-w-0">
+                          <div className="text-sm text-gray-900 truncate font-mono">{r.full_name}</div>
+                          {r.description && (
+                            <div className="text-xs text-gray-500 truncate">{r.description}</div>
+                          )}
+                        </div>
+                        {r.private && (
+                          <span className="text-[10px] uppercase tracking-wide bg-gray-100 text-gray-600 px-2 py-0.5 rounded-full flex-shrink-0">
+                            Private
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+            )}
 
             {/* Local Upload */}
             <div

@@ -9,11 +9,16 @@ import re
 from pathlib import Path
 from contextlib import asynccontextmanager
 
-from fastapi import FastAPI, HTTPException, UploadFile, File
+from dotenv import load_dotenv
+load_dotenv()
+
+from fastapi import FastAPI, HTTPException, UploadFile, File, Cookie
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
 import tarfile
 import zipfile
+
+from api.auth import router as auth_router, get_token_from_cookie
 
 ROOT = Path(__file__).resolve().parents[1]  # backend/
 sys.path.insert(0, str(ROOT))
@@ -94,13 +99,16 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
+_frontend_origin = os.environ.get("FRONTEND_URL", "http://localhost:5173")
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],
+    allow_origins=[_frontend_origin],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+app.include_router(auth_router)
 
 # --- request models ---
 class AnalyzeRequest(BaseModel):
@@ -174,7 +182,7 @@ def health():
 
 # --- graph endpoints ---
 @app.post("/analyze")
-def analyze(body: AnalyzeRequest):
+def analyze(body: AnalyzeRequest, synapsis_sid: str | None = Cookie(default=None)):
     global GRAPH
     try:
         full_name, repo_name = _parse_github_url(body.repo_url)
@@ -195,13 +203,20 @@ def analyze(body: AnalyzeRequest):
             "edge_count": len(g["edges"]),
         }
 
+    token = get_token_from_cookie(synapsis_sid)
+    clone_url = (
+        f"https://x-access-token:{token}@github.com/{full_name}.git"
+        if token
+        else f"https://github.com/{full_name}.git"
+    )
+
     # Clone into a temp dir
     tmp_dir = tempfile.mkdtemp(prefix="synapsis_")
     clone_path = Path(tmp_dir) / repo_name
     try:
-        print(f"[analyze] cloning {full_name} ...")
+        print(f"[analyze] cloning {full_name} (auth={'yes' if token else 'no'}) ...")
         subprocess.run(
-            ["git", "clone", "--depth", "1", f"https://github.com/{full_name}.git", str(clone_path)],
+            ["git", "clone", "--depth", "1", clone_url, str(clone_path)],
             check=True,
             capture_output=True,
             timeout=120,
@@ -248,7 +263,10 @@ def analyze(body: AnalyzeRequest):
             "edge_count": len(graph["edges"]),
         }
     except subprocess.CalledProcessError as e:
-        raise HTTPException(400, f"git clone failed: {e.stderr.decode()[:500]}")
+        stderr = e.stderr.decode()[:500]
+        if token:
+            stderr = stderr.replace(token, "***")
+        raise HTTPException(400, f"git clone failed: {stderr}")
     except Exception as e:
         raise HTTPException(500, f"Analysis failed: {str(e)}")
     finally:
