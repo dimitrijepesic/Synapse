@@ -10,7 +10,7 @@ ROOT = Path(__file__).resolve().parents[1]  # backend/
 sys.path.insert(0, str(ROOT))
 
 from parser import parse_repo
-from ir_compiler.ir_compiler import build_call_graph, save_graph
+from ir_compiler.ir_compiler_v3 import build_call_graph, save_graph
 
 KATANA = ROOT / "data" / "katana"
 CACHED = ROOT / "cached"

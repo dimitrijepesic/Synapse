@@ -52,10 +52,20 @@ def explain_node(node: dict, callers: list, callees: list, code_snippet: str) ->
     callee_names = ", ".join(c["qualified_name"] for c in callees[:5]) or "none"
     language, fence = _lang_from_file(node.get("file", ""))
 
+    cx = node.get("complexity") or {}
+    complexity_line = ""
+    if cx:
+        parts = []
+        if cx.get("line_span") is not None:
+            parts.append(f"{cx['line_span']} lines")
+        parts.append(f"{cx.get('call_count', 0)} outbound calls")
+        parts.append(f"{cx.get('param_count', 0)} params")
+        complexity_line = f"Complexity: {' · '.join(parts)}\n"
+
     user = f"""Function: {node['qualified_name']}
 File: {node['file']}:{node['line']}
 Signature: {node['signature']}
-Called by: {caller_names}
+{complexity_line}Called by: {caller_names}
 Calls: {callee_names}
 
 Source:
@@ -68,7 +78,7 @@ Explain this function."""
     resp = cached_complete(
         use_case="explain_node",
         params={"node_id": node["id"]},
-        content_signature=f"{node['signature']}|{code_snippet[:500]}",
+        content_signature=f"{node['signature']}|{cx.get('line_span')}|{cx.get('call_count')}|{code_snippet[:500]}",
         system=_explain_system(language),
         user=user,
         max_tokens=400,

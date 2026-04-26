@@ -263,6 +263,7 @@ const useGraphStore = create((set, get) => ({
   selectedFile: null,
   sourceFiles: {},
   graphId: null,
+  metadata: null,
   loading: false,
   error: null,
 
@@ -326,15 +327,41 @@ const useGraphStore = create((set, get) => ({
         }
       });
 
-      const iconFor = (node, isSelfRecursive) => {
-        if (node.category === 'test') return 'science';
-        if (isSelfRecursive) return 'loop';
-        const sig = node.signature || '';
-        if (/\binit\b/.test(sig)) return 'add_circle';
-        if (/\bprivate\b/.test(sig)) return 'lock';
-        if (/\boverride\b/.test(sig)) return 'subdirectory_arrow_right';
-        if (!node.container) return 'function';
-        return 'code';
+      // metadata.cycles.members is a list of SCCs (each list of node IDs).
+      // SCCs of size >=2 are real cycles; size 1 is just a non-cyclic node.
+      // Map each member -> its SCC index so we can flag edges where both
+      // endpoints belong to the same SCC.
+      const sccIndex = new Map();
+      const cycleMembers = new Set();
+      const sccs = (graph.metadata && graph.metadata.cycles && graph.metadata.cycles.members) || [];
+      sccs.forEach((scc, idx) => {
+        if (!Array.isArray(scc) || scc.length < 2) return;
+        scc.forEach((id) => {
+          sccIndex.set(id, idx);
+          cycleMembers.add(id);
+        });
+      });
+      // Promote v3 cycle data into the existing mutualRec flag so badges in
+      // the inspector / node card light up for any N-cycle, not just 2-cycles.
+      if (cycleMembers.size > 0) {
+        cycleMembers.forEach((id) => mutualRec.add(id));
+      }
+
+      const iconFor = (node) => {
+        switch (node.function_kind) {
+          case 'constructor': return 'add_circle';
+          case 'destructor': return 'delete';
+          case 'test_case': return 'science';
+          case 'test_lifecycle': return 'playlist_play';
+          case 'test_helper': return 'handyman';
+          case 'protocol_default': return 'extension';
+          case 'static_method': return 'bolt';
+          case 'method': return node.container ? 'code' : 'function';
+          default:
+            if (node.category === 'test') return 'science';
+            if (node.is_override) return 'subdirectory_arrow_right';
+            return node.container ? 'code' : 'function';
+        }
       };
 
       const dependenciesFor = (n) => {
@@ -355,10 +382,10 @@ const useGraphStore = create((set, get) => ({
         id: n.id,
         functionName: n.name,
         filePath: n.file,
-        complexity: '',
+        complexity: n.complexity || null,
         tags: tagsFromSignature(n.signature),
         position: { x: 0, y: 0 },
-        icon: iconFor(n, selfLoops.has(n.id)),
+        icon: iconFor(n),
         code: extractCode(n.file, n.line, n.line_end, n.code_snippet) || '',
         startLine: n.line,
         highlightLine: n.line,
@@ -380,20 +407,30 @@ const useGraphStore = create((set, get) => ({
         isMutualRecursive: mutualRec.has(n.id),
         isHttpEndpoint: !!n.is_http_endpoint,
         decorators: n.decorators || [],
+        accessLevel: n.access_level || null,
+        isOverride: !!n.is_override,
+        protocolWitnesses: n.protocol_witnesses || [],
+        functionKind: n.function_kind || null,
+        reachableFromPublicApi: n.reachable_from_public_api,
+        synthetic: !!n.synthetic,
       }));
 
-      const rawEdges = graph.edges.map((e, i) => ({
+      const rawEdges = graph.edges.map((e, i) => {
+        const sameScc = sccIndex.has(e.source) && sccIndex.get(e.source) === sccIndex.get(e.target);
+        return {
         id: `edge-${i}`,
         source: e.source,
         target: e.target,
         type: e.source === e.target ? 'loop' : (mutualRec.has(e.source) && mutualRec.has(e.target) ? 'loop' : 'normal'),
+        inCycle: sameScc,
         sourceHandle: 'output',
         targetHandle: 'input',
         weight: e.weight,
         condition: e.condition || null,
         branch_kind: e.branch_kind || null,
         synthetic: e.synthetic || false,
-      }));
+        };
+      });
 
       // Auto-layout (same BFS algorithm as mockData)
       const inDeg = {}, children = {};
@@ -439,6 +476,7 @@ const useGraphStore = create((set, get) => ({
         selectedFile: null,
         sourceFiles,
         graphId: graphId,
+        metadata: graph.metadata || null,
         loading: false,
         // New graph -> stale per-view caches, drop them so each view recomputes.
         viewLayouts: {},

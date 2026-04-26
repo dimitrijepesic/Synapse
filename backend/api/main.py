@@ -24,14 +24,14 @@ ROOT = Path(__file__).resolve().parents[1]  # backend/
 sys.path.insert(0, str(ROOT))
 
 from llm.use_cases import explain_node, codebase_overview, impact_narrative, chat_with_graph
-from ir_compiler.ir_compiler import (
+from ir_compiler.ir_compiler_v3 import (
     build_call_graph,
     predict_impact,
     get_node_with_neighbors,
     hotspots,
     dead_code,
-    safe_to_refactor,
 )
+from ir_compiler.ir_compiler import safe_to_refactor
 from ir_compiler.clustering import compute_clusters, label_clusters_with_llm
 from parser import parse_repo
 from parser.registry import supported_extensions

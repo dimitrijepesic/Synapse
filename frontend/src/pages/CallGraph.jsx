@@ -116,6 +116,7 @@ function getEdgeClasses(edge, selectedNodeId) {
   if (edge.type === 'if') classes.push('condition-if');
   if (edge.type === 'error') classes.push('condition-error');
   if (edge.type === 'loop') classes.push('condition-loop');
+  if (edge.inCycle) classes.push('condition-cycle');
   return classes.join(' ');
 }
 
@@ -141,7 +142,7 @@ function computeSelfLoopArrow(node) {
 // --- Main Call Graph page ---
 
 export default function Workspace() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, filters, filteredCounts, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, viewCameras, setViewCamera, viewLayouts } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, filters, filteredCounts, sourceFiles, loading: graphLoading, error: graphError, graphId, metadata, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, viewCameras, setViewCamera, viewLayouts } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -818,7 +819,7 @@ export default function Workspace() {
                 const newId = addNode({
                   functionName: formData.functionName,
                   filePath: formData.filePath,
-                  complexity: '',
+                  complexity: null,
                   tags: [],
                   position: { x: Math.round(avgX), y: maxY + 150 },
                   icon: 'terminal',
@@ -1218,9 +1219,13 @@ const FUNCTION_FILTERS = [
   { id: 'leaf', label: 'leaf', match: (n) => (n.outDegree ?? 0) === 0 },
 ];
 
+const complexityScore = (n) =>
+  (n.complexity?.line_span ?? 0) * 0.5 + (n.complexity?.call_count ?? 0);
+
 function FunctionList({ nodes, selectedNodeId, onSelect }) {
   const [query, setQuery] = useState('');
   const [active, setActive] = useState(() => new Set());
+  const [sortMode, setSortMode] = useState('file');
 
   const toggleChip = (id) => {
     setActive((prev) => {
@@ -1257,6 +1262,10 @@ function FunctionList({ nodes, selectedNodeId, onSelect }) {
   });
 
   const fileEntries = Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b));
+  const flatByComplexity =
+    sortMode === 'complexity'
+      ? [...filtered].sort((a, b) => complexityScore(b) - complexityScore(a))
+      : null;
 
   return (
     <div className="flex flex-col">
@@ -1308,15 +1317,43 @@ function FunctionList({ nodes, selectedNodeId, onSelect }) {
           )}
         </div>
 
-        <div className="mt-2 text-[10px] text-gray-400 font-label-sm uppercase tracking-wider">
-          {filtered.length} of {nodes.length}
+        <div className="mt-2 flex items-center justify-between gap-2">
+          <div className="text-[10px] text-gray-400 font-label-sm uppercase tracking-wider">
+            {filtered.length} of {nodes.length}
+          </div>
+          <div className="flex items-center gap-0.5 text-[10px]">
+            <span className="text-gray-400 font-label-sm uppercase tracking-wider mr-1">sort</span>
+            {['file', 'complexity'].map((mode) => (
+              <button
+                key={mode}
+                onClick={() => setSortMode(mode)}
+                className={`px-1.5 py-0.5 rounded border transition-colors capitalize ${
+                  sortMode === mode
+                    ? 'bg-primary text-white border-primary'
+                    : 'bg-white text-gray-500 border-gray-200 hover:border-primary/40 hover:text-gray-900'
+                }`}
+              >
+                {mode}
+              </button>
+            ))}
+          </div>
         </div>
       </div>
 
       {/* Tree */}
       <div className="text-[12px] font-inter select-none">
-        {fileEntries.length === 0 ? (
+        {filtered.length === 0 ? (
           <div className="px-3 py-4 text-[11px] text-gray-400">No matches.</div>
+        ) : flatByComplexity ? (
+          flatByComplexity.map((n) => (
+            <FunctionRow
+              key={n.id}
+              node={n}
+              active={n.id === selectedNodeId}
+              onSelect={onSelect}
+              showComplexity
+            />
+          ))
         ) : (
           fileEntries.map(([file, containers]) => (
             <FunctionFileGroup
@@ -1406,7 +1443,7 @@ function FunctionContainerGroup({ container, nodes, selectedNodeId, onSelect }) 
   );
 }
 
-function FunctionRow({ node, active, onSelect }) {
+function FunctionRow({ node, active, onSelect, showComplexity = false }) {
   const ref = useRef(null);
   useEffect(() => {
     if (active && ref.current) {
@@ -1421,11 +1458,15 @@ function FunctionRow({ node, active, onSelect }) {
   if (/\boverride\b/.test(node.signature || '')) tagsToShow.push({ label: 'ov', color: 'text-violet-600' });
   if (/\bprivate\b/.test(node.signature || '')) tagsToShow.push({ label: 'pr', color: 'text-gray-500' });
 
+  const cx = node.complexity;
+  const span = cx?.line_span;
+  const calls = cx?.call_count;
+
   return (
     <button
       ref={ref}
       onClick={() => onSelect(node.id)}
-      className={`w-full flex items-center gap-1.5 py-[4px] pl-12 pr-2 text-left transition-colors group ${
+      className={`w-full flex items-center gap-1.5 py-[4px] ${showComplexity ? 'pl-3' : 'pl-12'} pr-2 text-left transition-colors group ${
         active ? 'bg-soft-sage/20 text-deep-olive' : 'text-gray-600 hover:bg-gray-100 hover:text-gray-900'
       }`}
     >
@@ -1433,8 +1474,19 @@ function FunctionRow({ node, active, onSelect }) {
         {node.icon || 'function'}
       </span>
       <span className="truncate flex-1 text-[12px] code-font" title={node.signature || node.qualifiedName}>
+        {showComplexity && node.container && <span className="text-gray-400">{node.container}.</span>}
         {node.functionName}
       </span>
+      {showComplexity && cx && (
+        <span
+          className="text-[9px] font-label-sm text-orange-600 shrink-0 ml-1 tabular-nums"
+          title={`${span ?? '?'} lines · ${calls ?? 0} outbound calls`}
+        >
+          {span != null ? `L${span}` : ''}
+          {span != null && calls != null ? '·' : ''}
+          {calls != null ? `C${calls}` : ''}
+        </span>
+      )}
       <span className="flex items-center gap-0.5 shrink-0">
         {tagsToShow.map((t, i) => (
           <span key={i} className={`text-[8px] font-label-sm ${t.color}`}>{t.label}</span>
@@ -1619,9 +1671,18 @@ const NodeCard = memo(function NodeCard({ node, isSelected, isDimmed = false, on
               {fileLabel}:{node.startLine}
             </span>
           </div>
-          {isSelected && (
-            <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(79,70,229,0.4)] shrink-0" />
-          )}
+          <div className="flex items-center gap-1 shrink-0">
+            {node.complexity &&
+              ((node.complexity.line_span ?? 0) > 80 || (node.complexity.call_count ?? 0) > 15) && (
+                <span
+                  className="w-2 h-2 rounded-full bg-orange-400"
+                  title={`Heavy: ${node.complexity.line_span ?? '?'} lines, ${node.complexity.call_count ?? 0} outbound calls`}
+                />
+              )}
+            {isSelected && (
+              <span className="w-2 h-2 rounded-full bg-primary shadow-[0_0_8px_rgba(79,70,229,0.4)]" />
+            )}
+          </div>
         </div>
         <div className="font-body-md text-gray-900 truncate text-[16px]" title={node.qualifiedName || node.functionName}>
           {node.container ? (
@@ -2153,9 +2214,26 @@ function CodePanel({ node, open, onClose }) {
         <div className="p-4 bg-white">
           <div className="space-y-2">
             {node.container && <AnalysisRow label="Container" value={node.container} />}
+            <EnrichmentChips node={node} />
             <AnalysisRow label="Return Type" value={node.returnType || node.analysis.returnType || 'Void'} />
             {node.lineEnd != null && (
               <AnalysisRow label="Lines" value={`${node.startLine}–${node.lineEnd}`} />
+            )}
+            {node.complexity && (
+              <>
+                {node.complexity.line_span != null && (
+                  <AnalysisRow
+                    label="Span"
+                    value={`${node.complexity.line_span} lines`}
+                    highlight={node.complexity.line_span > 80}
+                  />
+                )}
+                <AnalysisRow
+                  label="Outbound calls"
+                  value={node.complexity.call_count}
+                  highlight={node.complexity.call_count > 15}
+                />
+              </>
             )}
             <AnalysisRow
               label="Callers / Callees"
@@ -2495,6 +2573,55 @@ function AnalysisRow({ label, value, highlight }) {
       <span className={`font-label-sm text-xs bg-gray-100 px-2 py-0.5 rounded ${highlight ? 'text-primary' : 'text-gray-700'}`}>
         {value}
       </span>
+    </div>
+  );
+}
+
+
+const ACCESS_LEVEL_STYLES = {
+  public: 'bg-deep-olive/15 text-deep-olive border-deep-olive/30',
+  open: 'bg-deep-olive/15 text-deep-olive border-deep-olive/30',
+  internal: 'bg-gray-100 text-gray-600 border-gray-200',
+  fileprivate: 'bg-gray-200 text-gray-700 border-gray-300',
+  private: 'bg-gray-200 text-gray-700 border-gray-300',
+};
+
+function EnrichmentChips({ node }) {
+  const access = node.accessLevel;
+  const protocols = node.protocolWitnesses || [];
+  const hasAny = access || node.isOverride || protocols.length > 0;
+  if (!hasAny) return null;
+  return (
+    <div className="flex flex-wrap items-center gap-1.5 pt-0.5">
+      {access && (
+        <span
+          className={`font-label-sm text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border ${ACCESS_LEVEL_STYLES[access] || ACCESS_LEVEL_STYLES.internal}`}
+          title={`Access level: ${access}`}
+        >
+          {(access === 'private' || access === 'fileprivate') && (
+            <span className="material-symbols-outlined text-[10px] mr-0.5 align-text-top">lock</span>
+          )}
+          {access}
+        </span>
+      )}
+      {node.isOverride && (
+        <span
+          className="flex items-center gap-0.5 font-label-sm text-[10px] uppercase tracking-wider px-1.5 py-0.5 rounded border bg-amber-50 text-amber-700 border-amber-200"
+          title="Overrides parent implementation"
+        >
+          <span className="material-symbols-outlined text-[10px]">subdirectory_arrow_right</span>
+          override
+        </span>
+      )}
+      {protocols.map((p) => (
+        <span
+          key={p}
+          className="font-label-sm text-[10px] px-1.5 py-0.5 rounded border bg-blue-50 text-blue-700 border-blue-200"
+          title={`Conforms to ${p}`}
+        >
+          {p}
+        </span>
+      ))}
     </div>
   );
 }

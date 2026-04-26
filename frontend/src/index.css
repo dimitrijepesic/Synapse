@@ -295,6 +295,11 @@ samp {
   opacity: 0.4;
 }
 
+.connection-line.condition-cycle {
+  stroke: #e11d48;
+  stroke-width: 2;
+}
+
 /* ---------- Scrollbar ---------- */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
