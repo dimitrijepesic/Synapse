@@ -1,4 +1,4 @@
-import { useState, useCallback, useEffect, useRef } from 'react';
+import { useState, useCallback, useEffect, useMemo, useRef, memo } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { Header, RepoFooter } from '../components/Layout';
 import useGraphStore from '../store/graphStore';
@@ -197,7 +197,7 @@ function ConditionLabel({ from, to, edge }) {
 // --- Main Control Flow page ---
 
 export default function ControlFlow() {
-  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, viewCameras, setViewCamera } = useGraphStore();
+  const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, sourceFiles, loading: graphLoading, error: graphError, graphId, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, viewCameras, setViewCamera, viewLayouts } = useGraphStore();
   const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
@@ -316,9 +316,21 @@ export default function ControlFlow() {
   }, [classFilter]);
 
   // Visible nodes: hide unused (0-in, 0-out) nodes unless toggled on
-  const visibleNodes = showUnusedNodes ? nodes : nodes.filter((n) => !isUnusedNode(n));
-  const visibleNodeIds = new Set(visibleNodes.map((n) => n.id));
-  const visibleEdges = edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target));
+  const visibleNodes = useMemo(
+    () => (showUnusedNodes ? nodes : nodes.filter((n) => !isUnusedNode(n))),
+    [nodes, showUnusedNodes],
+  );
+  const visibleNodeIds = useMemo(() => new Set(visibleNodes.map((n) => n.id)), [visibleNodes]);
+  const visibleEdges = useMemo(
+    () => edges.filter((e) => visibleNodeIds.has(e.source) && visibleNodeIds.has(e.target)),
+    [edges, visibleNodeIds],
+  );
+  // O(1) lookup for edge endpoint resolution (replaces per-edge .find scan)
+  const visibleNodeById = useMemo(() => {
+    const m = new Map();
+    for (const n of visibleNodes) m.set(n.id, n);
+    return m;
+  }, [visibleNodes]);
 
   // --- Zoom / Pan state (persisted per view in graphStore.viewCameras) ---
   const canvasRef = useRef(null);
@@ -348,11 +360,39 @@ export default function ControlFlow() {
     return () => obs.disconnect();
   }, [graphLoading, graphError]);
 
-  // Run dagre auto-layout once on mount so the initial graph isn't a tangle
+  // After a graph loads and enterView populates the dagre cache, fit the
+  // viewport to the graph so the user sees the whole layout instead of an
+  // off-screen mess. Gated on viewLayouts['control-flow'] so we read post-dagre
+  // positions, not the transient BFS positions from loadGraph.
+  const fittedGraphId = useRef(null);
+  const controlFlowLayout = viewLayouts['control-flow'];
   useEffect(() => {
-    autoLayout();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+    if (!graphId || graphLoading || graphError) return;
+    if (fittedGraphId.current === graphId) return;
+    if (!controlFlowLayout || Object.keys(controlFlowLayout).length === 0) return;
+    if (canvasSize.w === 0 || canvasSize.h === 0) return;
+
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const visibleIds = new Set(visibleNodes.map((n) => n.id));
+    for (const [id, p] of Object.entries(controlFlowLayout)) {
+      if (!visibleIds.has(id)) continue;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x + NODE_WIDTH > maxX) maxX = p.x + NODE_WIDTH;
+      if (p.y + NODE_HEIGHT > maxY) maxY = p.y + NODE_HEIGHT;
+    }
+    if (minX === Infinity) return;
+
+    const PADDING = 60;
+    const graphW = maxX - minX + 2 * PADDING;
+    const graphH = maxY - minY + 2 * PADDING;
+    const z = Math.max(0.15, Math.min(1, canvasSize.w / graphW, canvasSize.h / graphH));
+    const cx = (minX + maxX) / 2;
+    const cy = (minY + maxY) / 2;
+    setZoom(z);
+    setPan({ x: canvasSize.w / 2 - cx * z, y: canvasSize.h / 2 - cy * z });
+    fittedGraphId.current = graphId;
+  }, [graphId, graphLoading, graphError, controlFlowLayout, visibleNodes, canvasSize.w, canvasSize.h]);
 
   // Wheel: pinch-to-zoom (ctrlKey) or two-finger-scroll to pan
   useEffect(() => {
@@ -442,6 +482,51 @@ export default function ControlFlow() {
     if (!ui.codePanelOpen) toggleCodePanel();
     centerOnNode(nodeId);
   }, [selectNode, ui.codePanelOpen, toggleCodePanel, centerOnNode]);
+
+  // Viewport culling: only render nodes/edges that intersect the visible
+  // canvas (with a buffer so they don't pop in mid-pan). Selected node is
+  // always kept so highlight survives panning.
+  const VIEWPORT_BUFFER = 300;
+  const viewportBounds = useMemo(() => {
+    const buf = VIEWPORT_BUFFER / zoom;
+    const minX = -pan.x / zoom;
+    const minY = -pan.y / zoom;
+    return {
+      minX: minX - buf,
+      minY: minY - buf,
+      maxX: minX + canvasSize.w / zoom + buf,
+      maxY: minY + canvasSize.h / zoom + buf,
+    };
+  }, [pan.x, pan.y, zoom, canvasSize.w, canvasSize.h]);
+
+  const viewportNodes = useMemo(() => {
+    const out = [];
+    const { minX, minY, maxX, maxY } = viewportBounds;
+    for (const n of visibleNodes) {
+      const x = n.position.x;
+      const y = n.position.y;
+      if (
+        n.id === selectedNodeId ||
+        (x + NODE_WIDTH >= minX && x <= maxX && y + NODE_HEIGHT >= minY && y <= maxY)
+      ) {
+        out.push(n);
+      }
+    }
+    return out;
+  }, [visibleNodes, viewportBounds, selectedNodeId]);
+
+  const viewportNodeIds = useMemo(() => new Set(viewportNodes.map((n) => n.id)), [viewportNodes]);
+
+  const viewportEdges = useMemo(
+    () => visibleEdges.filter((e) => viewportNodeIds.has(e.source) || viewportNodeIds.has(e.target)),
+    [visibleEdges, viewportNodeIds],
+  );
+
+  // Stable id-based handlers — avoids fresh inline arrows on every render
+  // breaking React.memo on NodeCard / CompactNodeCard
+  const handleNodeSelect = useCallback((id) => selectNode(id), [selectNode]);
+  const handleNodeOpenCode = useCallback((id) => handleFunctionSelect(id), [handleFunctionSelect]);
+  const handleNodeMove = useCallback((id, pos) => moveNode(id, pos), [moveNode]);
 
   // Esc closes the file overlay (in addition to the node editor)
   useEffect(() => {
@@ -596,7 +681,7 @@ export default function ControlFlow() {
                     })}
 
                     {/* Edges between nodes in expanded clusters */}
-                    {edges.map((edge) => {
+                    {viewportEdges.map((edge) => {
                       const srcCluster = nodeClusterMap[edge.source];
                       const tgtCluster = nodeClusterMap[edge.target];
                       // Only show node-level edges if both ends are in expanded clusters
@@ -604,8 +689,8 @@ export default function ControlFlow() {
                       const tgtExpanded = tgtCluster && expandedClusters.has(tgtCluster);
                       if (!srcExpanded && !tgtExpanded) return null;
 
-                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
-                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
+                      const sourceNode = visibleNodeById.get(edge.source);
+                      const targetNode = visibleNodeById.get(edge.target);
                       if (!sourceNode || !targetNode) return null;
 
                       if (edge.source === edge.target) {
@@ -645,7 +730,7 @@ export default function ControlFlow() {
                   })}
 
                   {/* Nodes inside expanded clusters */}
-                  {visibleNodes.map((node) => {
+                  {viewportNodes.map((node) => {
                     const clusterId = nodeClusterMap[node.id];
                     if (!clusterId || !expandedClusters.has(clusterId)) return null;
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
@@ -656,10 +741,9 @@ export default function ControlFlow() {
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={visibleEdges}
-                        onSelect={() => selectNode(node.id)}
-                        onOpenCode={() => handleFunctionSelect(node.id)}
-                        onMove={(pos) => moveNode(node.id, pos)}
+                        onSelect={handleNodeSelect}
+                        onOpenCode={handleNodeOpenCode}
+                        onMove={handleNodeMove}
                         zoom={zoom}
                       />
                     );
@@ -671,9 +755,9 @@ export default function ControlFlow() {
 
                   {/* SVG edges */}
                   <svg className="absolute pointer-events-none" style={{ top: 0, left: 0, width: 5000, height: 5000, overflow: 'visible' }}>
-                    {visibleEdges.map((edge) => {
-                      const sourceNode = visibleNodes.find((n) => n.id === edge.source);
-                      const targetNode = visibleNodes.find((n) => n.id === edge.target);
+                    {viewportEdges.map((edge) => {
+                      const sourceNode = visibleNodeById.get(edge.source);
+                      const targetNode = visibleNodeById.get(edge.target);
                       if (!sourceNode || !targetNode) return null;
                       if (edge.source === edge.target) {
                         return (
@@ -696,7 +780,7 @@ export default function ControlFlow() {
                   </svg>
 
                   {/* Nodes */}
-                  {visibleNodes.map((node) => {
+                  {viewportNodes.map((node) => {
                     const dimByNeighbor = neighborIds ? !neighborIds.has(node.id) : false;
                     const dimByFilter = !matchesClassFilter(node);
                     return (
@@ -705,10 +789,9 @@ export default function ControlFlow() {
                         node={node}
                         isSelected={node.id === selectedNodeId}
                         isDimmed={dimByNeighbor || dimByFilter}
-                        edges={visibleEdges}
-                        onSelect={() => selectNode(node.id)}
-                        onOpenCode={() => handleFunctionSelect(node.id)}
-                        onMove={(pos) => moveNode(node.id, pos)}
+                        onSelect={handleNodeSelect}
+                        onOpenCode={handleNodeOpenCode}
+                        onMove={handleNodeMove}
                         zoom={zoom}
                       />
                     );
@@ -794,7 +877,6 @@ export default function ControlFlow() {
                   startLine: 1,
                   highlightLine: null,
                   analysis: {
-                    description: formData.description || `Function ${formData.functionName}`,
                     dependencies: '-',
                     returnType: 'unknown',
                     executionTime: '-',
@@ -977,13 +1059,12 @@ function SideNav({
     'w-full flex flex-col items-center py-1.5 sm:py-2 md:py-2.5 rounded transition-all duration-100 ease-in group';
   const railIcon =
     'material-symbols-outlined text-[18px] sm:text-[20px] md:text-[22px] md:mb-0.5 group-hover:scale-110 transition-transform';
-  const railLabel =
-    'hidden md:block font-grotesk uppercase text-[9px] tracking-widest text-center w-full truncate px-1';
+  const railLabel = 'hidden';
 
   return (
     <div className="flex min-h-0 shrink-0 z-40">
       {/* Icon rail */}
-      <nav className="w-12 sm:w-14 md:w-20 h-full flex flex-col items-center py-2 sm:py-3 md:py-3 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)] overflow-y-auto">
+      <nav className="w-12 sm:w-12 md:w-14 h-full flex flex-col items-center py-2 sm:py-3 md:py-3 bg-white border-r border-gray-200 shadow-[0_2px_4px_rgba(0,0,0,0.05)] overflow-y-auto">
         <div className="flex flex-col items-center w-full gap-1 px-0.5 sm:px-1 md:px-2 flex-1">
           {/* Page navigation */}
           {navLinks.map((nl) => (
@@ -1101,7 +1182,7 @@ function SideNav({
                   }`}
                 >
                   <span className={`w-1.5 h-1.5 rounded-full ${f.dotClass}`} />
-                  <span className="font-label-sm hidden md:inline">{f.label}</span>
+                  <span className="hidden">{f.label}</span>
                   <span className={`text-[9px] ${on ? 'text-white/70' : 'text-gray-400'}`}>{count}</span>
                 </button>
               );
@@ -1508,19 +1589,19 @@ function ClusterCard({ cluster, position, isExpanded, onToggle }) {
 
 // --- Draggable Node Card ---
 
-function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onOpenCode, onMove, zoom = 1 }) {
+const NodeCard = memo(function NodeCard({ node, isSelected, isDimmed = false, onSelect, onOpenCode, onMove, zoom = 1 }) {
   const handleMouseDown = useCallback(
     (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
       e.stopPropagation();
-      onSelect();
+      onSelect(node.id);
       const startX = e.clientX;
       const startY = e.clientY;
       const startPos = { ...node.position };
 
       const onMouseMove = (ev) => {
-        onMove({
+        onMove(node.id, {
           x: startPos.x + (ev.clientX - startX) / zoom,
           y: startPos.y + (ev.clientY - startY) / zoom,
         });
@@ -1532,7 +1613,7 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onOpenC
       document.addEventListener('mousemove', onMouseMove);
       document.addEventListener('mouseup', onMouseUp);
     },
-    [node.position, onSelect, onMove, zoom],
+    [node.id, node.position, onSelect, onMove, zoom],
   );
 
   const iconColor =
@@ -1558,7 +1639,7 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onOpenC
         className={`node-card ${isSelected ? 'active' : ''} ${isDimmed ? 'dimmed' : ''} ${isUnused ? 'is-dead' : ''} ${isLeaf ? 'is-leaf' : ''} rounded px-3 py-3 cursor-move h-full overflow-hidden`}
         style={cardBorder}
         onMouseDown={handleMouseDown}
-        onDoubleClick={(e) => { e.stopPropagation(); onOpenCode && onOpenCode(); }}
+        onDoubleClick={(e) => { e.stopPropagation(); onOpenCode && onOpenCode(node.id); }}
       >
         <div className="flex justify-between items-center mb-1.5">
           <div className="flex items-center gap-1.5 min-w-0">
@@ -1620,7 +1701,7 @@ function NodeCard({ node, isSelected, isDimmed = false, edges, onSelect, onOpenC
 
     </div>
   );
-}
+});
 
 // --- Code Panel ---
 
@@ -1639,6 +1720,7 @@ function CodePanel({ node, open, onClose }) {
   const [impactError, setImpactError] = useState(null);
   const [displayedImpact, setDisplayedImpact] = useState('');
   const [impactRevealed, setImpactRevealed] = useState(false);
+  const [copied, setCopied] = useState(false);
   const MIN_W = 280;
   const MAX_W = 700;
 
@@ -1651,6 +1733,7 @@ function CodePanel({ node, open, onClose }) {
     setImpactNarrative(null);
     setImpactError(null);
     setImpactLoading(false);
+    setCopied(false);
   }, [node?.id]);
 
   // Typewriter + smooth height-reveal for AI summary
@@ -1778,6 +1861,14 @@ function CodePanel({ node, open, onClose }) {
     }
   }, [node?.id]);
 
+  const handleCopy = useCallback(() => {
+    if (!node?.code) return;
+    navigator.clipboard.writeText(node.code).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    }).catch(() => {});
+  }, [node?.code]);
+
   const handleResizeStart = useCallback((e) => {
     e.preventDefault();
     setDragging(true);
@@ -1861,7 +1952,6 @@ function CodePanel({ node, open, onClose }) {
         <div className="p-4">
           {node && node.analysis ? (
             <>
-              <p className="font-body-md text-sm text-gray-500 mb-3">{node.analysis.description}</p>
               {summaryError && (
                 <p className="font-body-md text-sm text-rose-600 mb-3">{summaryError}</p>
               )}
@@ -1951,32 +2041,6 @@ function CodePanel({ node, open, onClose }) {
                   {node.signature}
                 </div>
               )}
-              <div className="space-y-2">
-                {node.container && <AnalysisRow label="Container" value={node.container} />}
-                <AnalysisRow label="Return Type" value={node.returnType || node.analysis.returnType || 'Void'} />
-                {node.lineEnd != null && (
-                  <AnalysisRow label="Lines" value={`${node.startLine}–${node.lineEnd}`} />
-                )}
-                <AnalysisRow
-                  label="Callers / Callees"
-                  value={`${node.inDegree ?? 0} ← · → ${node.outDegree ?? 0}`}
-                  highlight={(node.inDegree ?? 0) === 0 || (node.outDegree ?? 0) === 0}
-                />
-                {node.category && (
-                  <AnalysisRow label="Category" value={node.category} />
-                )}
-                {(node.isSelfRecursive || node.isMutualRecursive) && (
-                  <AnalysisRow
-                    label="Recursion"
-                    value={node.isSelfRecursive ? 'self-recursive' : 'mutual'}
-                    highlight
-                  />
-                )}
-                {node.params && node.params.length > 0 && <ParamsList params={node.params} />}
-                {node.analysis.dependencies && node.analysis.dependencies !== '-' && (
-                  <DependenciesList value={node.analysis.dependencies} />
-                )}
-              </div>
             </>
           ) : (
             <p className="text-gray-400 text-sm">No node selected.</p>
@@ -1984,13 +2048,24 @@ function CodePanel({ node, open, onClose }) {
         </div>
       </div>
 
-      {/* Code view — contained block */}
-      <div className="p-4 bg-white relative">
+      {/* Code view — middle */}
+      <div className="p-4 bg-white relative border-b border-gray-200">
         {node ? (
           <div className="bg-gray-50 border border-gray-200 rounded-lg overflow-hidden">
-            <div className="px-3 py-1.5 border-b border-gray-200 bg-gray-100/60 flex items-center gap-2">
-              <span className="material-symbols-outlined text-[14px] text-gray-400">description</span>
-              <span className="font-label-sm text-[10px] text-gray-500 uppercase tracking-wider">{node.filePath}</span>
+            <div className="px-3 py-1.5 border-b border-gray-200 bg-gray-100/60 flex items-center justify-between gap-2">
+              <div className="flex items-center gap-2 min-w-0">
+                <span className="material-symbols-outlined text-[14px] text-gray-400 shrink-0">description</span>
+                <span className="font-label-sm text-[10px] text-gray-500 uppercase tracking-wider truncate">{node.filePath}</span>
+              </div>
+              <button
+                onClick={handleCopy}
+                disabled={!node.code}
+                className="flex items-center gap-1 text-[10px] text-gray-500 hover:text-gray-900 px-1.5 py-0.5 rounded hover:bg-gray-200/60 transition-colors shrink-0 disabled:opacity-40 disabled:cursor-not-allowed"
+                title={copied ? 'Copied!' : 'Copy code'}
+              >
+                <span className="material-symbols-outlined text-[12px]">{copied ? 'check' : 'content_copy'}</span>
+                <span className="font-label-sm uppercase tracking-wider">{copied ? 'Copied' : 'Copy'}</span>
+              </button>
             </div>
             <div className="p-4 overflow-x-auto">
               <CodeView code={node.code || ''} startLine={node.startLine || 1} highlightLine={node.highlightLine} />
@@ -2000,6 +2075,38 @@ function CodePanel({ node, open, onClose }) {
           <p className="text-gray-400 text-sm font-label-sm">Click a node to view its source code.</p>
         )}
       </div>
+
+      {/* Stats — bottom */}
+      {node && node.analysis && (
+        <div className="p-4 bg-white">
+          <div className="space-y-2">
+            {node.container && <AnalysisRow label="Container" value={node.container} />}
+            <AnalysisRow label="Return Type" value={node.returnType || node.analysis.returnType || 'Void'} />
+            {node.lineEnd != null && (
+              <AnalysisRow label="Lines" value={`${node.startLine}–${node.lineEnd}`} />
+            )}
+            <AnalysisRow
+              label="Callers / Callees"
+              value={`${node.inDegree ?? 0} ← · → ${node.outDegree ?? 0}`}
+              highlight={(node.inDegree ?? 0) === 0 || (node.outDegree ?? 0) === 0}
+            />
+            {node.category && (
+              <AnalysisRow label="Category" value={node.category} />
+            )}
+            {(node.isSelfRecursive || node.isMutualRecursive) && (
+              <AnalysisRow
+                label="Recursion"
+                value={node.isSelfRecursive ? 'self-recursive' : 'mutual'}
+                highlight
+              />
+            )}
+            {node.params && node.params.length > 0 && <ParamsList params={node.params} />}
+            {node.analysis.dependencies && node.analysis.dependencies !== '-' && (
+              <DependenciesList value={node.analysis.dependencies} />
+            )}
+          </div>
+        </div>
+      )}
       </div>
     </aside>
   );

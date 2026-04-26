@@ -32,16 +32,6 @@ function iconFor(node, isSelfRecursive) {
   return 'code';
 }
 
-function describe(n) {
-  if (n.category === 'test') {
-    return `XCTest case ${n.qualified_name}${n.return_type ? ` returning ${n.return_type}` : ''}.`;
-  }
-  const where = n.container ? `Method on ${n.container}` : 'Top-level function';
-  const ret = n.return_type ? ` returning ${n.return_type}` : '';
-  const params = n.params && n.params.length ? `, ${n.params.length} parameter${n.params.length === 1 ? '' : 's'}` : '';
-  return `${where} ${n.name}${ret}${params}.`;
-}
-
 function dependenciesFor(n) {
   const parts = [];
   if (n.container) parts.push(n.container);
@@ -124,7 +114,6 @@ const rawNodes = graphJson.nodes.map((n) => ({
   startLine: n.line,
   highlightLine: n.line,
   analysis: {
-    description: describe(n),
     dependencies: dependenciesFor(n),
     returnType: n.return_type || 'Void',
     executionTime: '-',

@@ -24,6 +24,83 @@ import { API_BASE } from '../types/api';
 // Seed cluster card positions at the centroid of their member nodes' current
 // positions, sized as a single node card. Used when entering cluster mode so
 // each card visually "grows out of" the area where its members were sitting.
+// Wrap tall dagre ranks into multiple sub-columns so the bounding box stays
+// closer to square. dagre LR otherwise stacks every sibling at the same x,
+// producing a tall narrow strip whenever one function fans out widely. We
+// preserve dagre's within-rank order (which minimizes edge crossings) and
+// only re-stack when the current aspect is below `targetAspect`.
+function _balanceLayoutAspect(positions, opts = {}) {
+  const ids = Object.keys(positions);
+  if (ids.length < 4) return positions;
+
+  const nodeW = opts.nodeW ?? NODE_WIDTH;
+  const nodeH = opts.nodeH ?? NODE_HEIGHT;
+  const gapX = opts.gapX ?? 80;
+  const gapY = opts.gapY ?? 40;
+  const targetAspect = opts.targetAspect ?? 1.0;
+
+  let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+  ids.forEach((id) => {
+    const p = positions[id];
+    if (p.x < minX) minX = p.x;
+    if (p.y < minY) minY = p.y;
+    if (p.x + nodeW > maxX) maxX = p.x + nodeW;
+    if (p.y + nodeH > maxY) maxY = p.y + nodeH;
+  });
+  const W = maxX - minX, H = maxY - minY;
+  if (W <= 0 || H <= 0) return positions;
+  if (W / H >= targetAspect * 0.9) return positions;
+
+  const byRank = new Map();
+  ids.forEach((id) => {
+    const xKey = positions[id].x;
+    if (!byRank.has(xKey)) byRank.set(xKey, []);
+    byRank.get(xKey).push({ id, y: positions[id].y });
+  });
+  const ranks = [...byRank.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .map(([, nodes]) => nodes.sort((a, b) => a.y - b.y));
+
+  const subCols = ranks.map(() => 1);
+  const aspectOf = () => {
+    const totalCols = subCols.reduce((a, b) => a + b, 0);
+    const maxRows = Math.max(...ranks.map((r, i) => Math.ceil(r.length / subCols[i])));
+    return (totalCols * (nodeW + gapX)) / (maxRows * (nodeH + gapY));
+  };
+
+  let safety = 500;
+  while (safety-- > 0 && aspectOf() < targetAspect) {
+    let bestIdx = -1, bestRows = 0;
+    for (let i = 0; i < ranks.length; i++) {
+      if (ranks[i].length <= subCols[i]) continue;
+      const rows = Math.ceil(ranks[i].length / subCols[i]);
+      if (rows > bestRows) { bestRows = rows; bestIdx = i; }
+    }
+    if (bestIdx === -1) break;
+    subCols[bestIdx]++;
+  }
+
+  const midY = (minY + maxY) / 2;
+  const out = {};
+  let xCursor = minX;
+  ranks.forEach((rankNodes, i) => {
+    const k = subCols[i];
+    const perCol = Math.ceil(rankNodes.length / k);
+    const colHeight = (perCol - 1) * (nodeH + gapY) + nodeH;
+    const colTop = midY - colHeight / 2;
+    rankNodes.forEach((n, idx) => {
+      const col = Math.floor(idx / perCol);
+      const row = idx % perCol;
+      out[n.id] = {
+        x: Math.round(xCursor + col * (nodeW + gapX)),
+        y: Math.round(colTop + row * (nodeH + gapY)),
+      };
+    });
+    xCursor += k * (nodeW + gapX);
+  });
+  return out;
+}
+
 // Compute the auto-layout target positions for a graph (dagre on connected
 // nodes, grid-pack on isolated). Pure: no store mutation. Returns
 // { [nodeId]: {x, y} }.
@@ -55,17 +132,24 @@ function _computeAutoLayoutTargets(nodes, edges) {
     });
     dagre.layout(g);
 
-    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    const raw = {};
     connectedNodes.forEach((n) => {
       const p = g.node(n.id);
       if (!p) return;
-      const x = Math.round(p.x - NODE_WIDTH / 2);
-      const y = Math.round(p.y - NODE_HEIGHT / 2);
-      targets[n.id] = { x, y };
-      if (x < minX) minX = x;
-      if (y < minY) minY = y;
-      if (x + NODE_WIDTH > maxX) maxX = x + NODE_WIDTH;
-      if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
+      raw[n.id] = {
+        x: Math.round(p.x - NODE_WIDTH / 2),
+        y: Math.round(p.y - NODE_HEIGHT / 2),
+      };
+    });
+
+    const balanced = _balanceLayoutAspect(raw);
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+    Object.entries(balanced).forEach(([id, p]) => {
+      targets[id] = p;
+      if (p.x < minX) minX = p.x;
+      if (p.y < minY) minY = p.y;
+      if (p.x + NODE_WIDTH > maxX) maxX = p.x + NODE_WIDTH;
+      if (p.y + NODE_HEIGHT > maxY) maxY = p.y + NODE_HEIGHT;
     });
     if (minX !== Infinity) dagreBounds = { minX, minY, maxX, maxY };
   }
@@ -254,14 +338,6 @@ const useGraphStore = create((set, get) => ({
         return 'code';
       };
 
-      const describe = (n) => {
-        if (n.category === 'test') return `XCTest case ${n.qualified_name}${n.return_type ? ` returning ${n.return_type}` : ''}.`;
-        const where = n.container ? `Method on ${n.container}` : 'Top-level function';
-        const ret = n.return_type ? ` returning ${n.return_type}` : '';
-        const params = n.params && n.params.length ? `, ${n.params.length} parameter${n.params.length === 1 ? '' : 's'}` : '';
-        return `${where} ${n.name}${ret}${params}.`;
-      };
-
       const dependenciesFor = (n) => {
         const parts = [];
         if (n.container) parts.push(n.container);
@@ -288,7 +364,6 @@ const useGraphStore = create((set, get) => ({
         startLine: n.line,
         highlightLine: n.line,
         analysis: {
-          description: describe(n),
           dependencies: dependenciesFor(n),
           returnType: n.return_type || 'Void',
           executionTime: '-',
@@ -616,75 +691,7 @@ const useGraphStore = create((set, get) => ({
     const { nodes, edges } = get();
     if (nodes.length === 0) return;
 
-    // Split: connected nodes go to dagre, isolated nodes get grid-packed
-    // separately so they don't form a tall vertical column.
-    const connectedIds = new Set();
-    edges.forEach((e) => {
-      if (e.source !== e.target) {
-        connectedIds.add(e.source);
-        connectedIds.add(e.target);
-      }
-    });
-    const connectedNodes = nodes.filter((n) => connectedIds.has(n.id));
-    const isolatedNodes = nodes.filter((n) => !connectedIds.has(n.id));
-
-    const targets = {};
-    let dagreBounds = { minX: 0, minY: 0, maxX: 0, maxY: 0 };
-
-    if (connectedNodes.length > 0) {
-      const g = new dagre.graphlib.Graph();
-      g.setGraph({
-        rankdir: 'LR',
-        nodesep: 40,
-        ranksep: 100,
-        marginx: 40,
-        marginy: 40,
-      });
-      g.setDefaultEdgeLabel(() => ({}));
-
-      connectedNodes.forEach((n) => {
-        g.setNode(n.id, { width: NODE_WIDTH, height: NODE_HEIGHT });
-      });
-      edges.forEach((e) => {
-        if (e.source !== e.target && connectedIds.has(e.source) && connectedIds.has(e.target)) {
-          g.setEdge(e.source, e.target);
-        }
-      });
-
-      dagre.layout(g);
-
-      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
-      connectedNodes.forEach((n) => {
-        const p = g.node(n.id);
-        if (!p) return;
-        const x = Math.round(p.x - NODE_WIDTH / 2);
-        const y = Math.round(p.y - NODE_HEIGHT / 2);
-        targets[n.id] = { x, y };
-        if (x < minX) minX = x;
-        if (y < minY) minY = y;
-        if (x + NODE_WIDTH > maxX) maxX = x + NODE_WIDTH;
-        if (y + NODE_HEIGHT > maxY) maxY = y + NODE_HEIGHT;
-      });
-      if (minX !== Infinity) dagreBounds = { minX, minY, maxX, maxY };
-    }
-
-    // Grid-pack isolated nodes to the right of the dagre cluster.
-    if (isolatedNodes.length > 0) {
-      const GAP_X = 24;
-      const GAP_Y = 24;
-      const startX = (connectedNodes.length > 0 ? dagreBounds.maxX + 80 : 40);
-      const startY = (connectedNodes.length > 0 ? dagreBounds.minY : 40);
-      // Aim for a roughly square block; cap columns so it doesn't go too wide.
-      const cols = Math.max(1, Math.min(12, Math.ceil(Math.sqrt(isolatedNodes.length))));
-      isolatedNodes.forEach((n, i) => {
-        const c = i % cols;
-        const r = Math.floor(i / cols);
-        targets[n.id] = {
-          x: startX + c * (NODE_WIDTH + GAP_X),
-          y: startY + r * (NODE_HEIGHT + GAP_Y),
-        };
-      });
-    }
+    const targets = _computeAutoLayoutTargets(nodes, edges);
 
     const persistTargets = (state) => {
       if (!state.activeView) return state.viewLayouts;

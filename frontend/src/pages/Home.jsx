@@ -1,7 +1,12 @@
 import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
+import JSZip from 'jszip';
 import { Header, Footer } from '../components/Layout';
 import { API_BASE } from '../types/api';
+
+const SOURCE_EXTS = ['.swift', '.py', '.js', '.ts', '.jsx', '.tsx', '.java', '.go'];
+const SKIP_DIRS = new Set(['node_modules', '.git', '.svn', '.hg', 'dist', 'build', '.next', '.venv', 'venv', '__pycache__', '.idea', '.vscode', 'target']);
+const isSourceFile = (name) => SOURCE_EXTS.some((e) => name.toLowerCase().endsWith(e));
 
 export default function Home() {
   const [repoUrl, setRepoUrl] = useState('');
@@ -88,31 +93,46 @@ export default function Home() {
     if (e.key === 'Enter') handleAnalyze();
   };
 
-  const handleUpload = async (file) => {
-    if (!file) return;
-    const name = file.name.toLowerCase();
-    const isArchive = name.endsWith('.zip') || name.endsWith('.tar') || name.endsWith('.tar.gz') || name.endsWith('.tgz');
-    const isSource = name.endsWith('.swift') || name.endsWith('.py') || name.endsWith('.js') || name.endsWith('.ts') || name.endsWith('.java') || name.endsWith('.go');
-    if (!(isArchive || isSource)) {
-      setError('Unsupported file type. Please upload an archive (.zip, .tar, .tar.gz) or a source file (.swift, .py, .js, .ts, .java, .go).');
+  const postUpload = async (file) => {
+    const formData = new FormData();
+    formData.append('file', file);
+    const res = await fetch(`${API_BASE}/upload`, {
+      method: 'POST',
+      credentials: 'include',
+      body: formData,
+    });
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}));
+      throw new Error(data.detail || `Server error ${res.status}`);
+    }
+    const data = await res.json();
+    navigate(`/workspace?graph_id=${data.graph_id}`);
+  };
+
+  // Bundle a list of {path, file} entries into a single .zip and upload.
+  const uploadFolderEntries = async (entries) => {
+    const filtered = entries.filter(({ path, file }) => {
+      if (!isSourceFile(file.name)) return false;
+      const segments = path.split('/').slice(0, -1);
+      return !segments.some((seg) => SKIP_DIRS.has(seg));
+    });
+    if (filtered.length === 0) {
+      setError('No supported source files found in the folder.');
       return;
     }
     setLoading(true);
     setError('');
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-      const res = await fetch(`${API_BASE}/upload`, {
-        method: 'POST',
-        credentials: 'include',
-        body: formData,
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => ({}));
-        throw new Error(data.detail || `Server error ${res.status}`);
+      const zip = new JSZip();
+      // Derive a top-level folder name from the first entry's leading segment.
+      const rootName = filtered[0].path.split('/')[0] || 'upload';
+      for (const { path, file } of filtered) {
+        const buf = await file.arrayBuffer();
+        zip.file(path, buf);
       }
-      const data = await res.json();
-      navigate(`/workspace?graph_id=${data.graph_id}`);
+      const blob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE' });
+      const zipFile = new File([blob], `${rootName}.zip`, { type: 'application/zip' });
+      await postUpload(zipFile);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -120,9 +140,80 @@ export default function Home() {
     }
   };
 
-  const handleDrop = (e) => {
+  const handleUpload = async (file) => {
+    if (!file) return;
+    const name = file.name.toLowerCase();
+    const isArchive = name.endsWith('.zip') || name.endsWith('.tar') || name.endsWith('.tar.gz') || name.endsWith('.tgz');
+    if (!(isArchive || isSourceFile(name))) {
+      setError('Unsupported file type. Please upload an archive (.zip, .tar, .tar.gz), a source file, or a folder.');
+      return;
+    }
+    setLoading(true);
+    setError('');
+    try {
+      await postUpload(file);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Folder picker: <input webkitdirectory> populates files with a webkitRelativePath.
+  const handleFolderPick = (fileList) => {
+    if (!fileList || fileList.length === 0) return;
+    const entries = Array.from(fileList).map((f) => ({
+      path: f.webkitRelativePath || f.name,
+      file: f,
+    }));
+    uploadFolderEntries(entries);
+  };
+
+  // Walk a DataTransferItem entry tree (folder drop) and collect every file.
+  const walkEntry = async (entry, prefix = '') => {
+    if (entry.isFile) {
+      return new Promise((resolve) => {
+        entry.file((file) => resolve([{ path: prefix + file.name, file }]));
+      });
+    }
+    if (entry.isDirectory) {
+      if (SKIP_DIRS.has(entry.name)) return [];
+      const reader = entry.createReader();
+      const readAll = () =>
+        new Promise((resolve, reject) => {
+          const collected = [];
+          const readBatch = () => {
+            reader.readEntries((batch) => {
+              if (batch.length === 0) resolve(collected);
+              else { collected.push(...batch); readBatch(); }
+            }, reject);
+          };
+          readBatch();
+        });
+      const children = await readAll();
+      const nested = await Promise.all(children.map((c) => walkEntry(c, `${prefix}${entry.name}/`)));
+      return nested.flat();
+    }
+    return [];
+  };
+
+  const handleDrop = async (e) => {
     e.preventDefault();
     setDragOver(false);
+    const items = e.dataTransfer.items ? Array.from(e.dataTransfer.items) : [];
+    const entries = items
+      .map((it) => (it.webkitGetAsEntry ? it.webkitGetAsEntry() : null))
+      .filter(Boolean);
+    const hasFolder = entries.some((en) => en.isDirectory);
+    if (hasFolder) {
+      try {
+        const collected = (await Promise.all(entries.map((en) => walkEntry(en)))).flat();
+        await uploadFolderEntries(collected);
+      } catch (err) {
+        setError(err.message || 'Failed to read folder.');
+      }
+      return;
+    }
     const file = e.dataTransfer.files[0];
     handleUpload(file);
   };
@@ -272,7 +363,7 @@ export default function Home() {
 
             {/* Local Upload */}
             <div
-              className={`mt-2 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors cursor-pointer group ${
+              className={`mt-2 border-2 border-dashed rounded-xl p-8 flex flex-col items-center justify-center gap-3 transition-colors group ${
                 dragOver
                   ? 'border-deep-olive bg-soft-sage/20'
                   : 'border-gray-200 bg-gray-50 hover:bg-gray-100 hover:border-gray-300'
@@ -280,14 +371,23 @@ export default function Home() {
               onDrop={handleDrop}
               onDragOver={handleDragOver}
               onDragLeave={handleDragLeave}
-              onClick={() => document.getElementById('file-upload').click()}
             >
               <input
                 id="file-upload"
                 type="file"
-                accept=".zip,.tar,.tar.gz,.tgz,.swift,.py,.js,.ts,.java,.go"
+                accept=".zip,.tar,.tar.gz,.tgz,.swift,.py,.js,.ts,.jsx,.tsx,.java,.go"
                 className="hidden"
                 onChange={(e) => handleUpload(e.target.files[0])}
+                disabled={loading}
+              />
+              <input
+                id="folder-upload"
+                type="file"
+                webkitdirectory=""
+                directory=""
+                multiple
+                className="hidden"
+                onChange={(e) => handleFolderPick(e.target.files)}
                 disabled={loading}
               />
               <div className={`w-12 h-12 rounded-full bg-white shadow-sm flex items-center justify-center transition-colors ${
@@ -296,8 +396,26 @@ export default function Home() {
                 <span className="material-symbols-outlined">cloud_upload</span>
               </div>
               <div className="text-center">
-                <p className="text-sm font-medium text-gray-900 mb-1">Upload Files</p>
-                <p className="text-xs text-gray-500">Drag &amp; drop or click to upload (.zip, .tar, .tar.gz, .swift, ...)</p>
+                <p className="text-sm font-medium text-gray-900 mb-1">Upload Files or Folder</p>
+                <p className="text-xs text-gray-500">Drag &amp; drop a file or folder, or pick one below</p>
+                <div className="mt-3 flex items-center justify-center gap-2">
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); document.getElementById('file-upload').click(); }}
+                    disabled={loading}
+                    className="text-xs px-3 py-1.5 rounded border border-gray-300 bg-white text-gray-700 hover:border-deep-olive hover:text-deep-olive transition-colors disabled:opacity-50"
+                  >
+                    Choose file
+                  </button>
+                  <button
+                    type="button"
+                    onClick={(e) => { e.stopPropagation(); document.getElementById('folder-upload').click(); }}
+                    disabled={loading}
+                    className="text-xs px-3 py-1.5 rounded border border-gray-300 bg-white text-gray-700 hover:border-deep-olive hover:text-deep-olive transition-colors disabled:opacity-50"
+                  >
+                    Choose folder
+                  </button>
+                </div>
               </div>
             </div>
           </div>
