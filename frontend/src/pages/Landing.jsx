@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom';
 import CallGraphBackground from '../components/CallGraphBackground/CallGraphBackground';
+import GitHubAccount from '../components/Layout/GitHubAccount';
 
 function ImportCard() {
   return (
@@ -75,6 +76,7 @@ export default function Landing() {
             <img src="https://i.imgur.com/HrjNptE.png" alt="Synapse" className="h-7 w-7 object-contain" />
             Synapse
           </Link>
+          <GitHubAccount theme="light" />
         </div>
       </nav>
 
@@ -92,9 +94,10 @@ export default function Landing() {
             <Link to="/home" className="bg-deep-olive text-white px-6 py-3 rounded text-sm font-semibold hover:bg-deep-olive/90 transition-colors">
               Import your first project
             </Link>
-            <button className="bg-transparent border border-gray-300 text-deep-olive px-6 py-3 rounded text-sm font-semibold hover:border-soft-sage hover:text-soft-sage transition-colors">
-              View Live Demo
-            </button>
+            <Link to="/workspace/call-graph" className="bg-transparent border border-gray-300 text-deep-olive px-6 py-3 rounded text-sm font-semibold hover:border-soft-sage hover:text-soft-sage transition-colors flex items-center gap-2">
+              <span className="material-symbols-outlined text-[18px]">play_circle</span>
+              Try a sample repo
+            </Link>
           </div>
         </section>
 
