@@ -175,3 +175,48 @@ def list_repos(synapsis_sid: str | None = Cookie(default=None)):
             for r in repos
         ]
     }
+
+
+@router.get("/github/last-commit")
+def last_commit(repo: str, branch: str | None = None, synapsis_sid: str | None = Cookie(default=None)):
+    """Return the latest commit on the given repo's default branch (or `branch` if provided).
+
+    `repo` is "owner/name". Authenticated calls work for private repos; public repos work without auth.
+    """
+    if "/" not in repo:
+        raise HTTPException(400, "repo must be in 'owner/name' form")
+
+    sess = get_session(synapsis_sid)
+    headers = {"Accept": "application/vnd.github+json"}
+    if sess:
+        headers["Authorization"] = f"Bearer {sess['access_token']}"
+
+    with httpx.Client(timeout=10) as client:
+        if branch is None:
+            meta = client.get(f"https://api.github.com/repos/{repo}", headers=headers)
+            if meta.status_code == 404:
+                raise HTTPException(404, f"Repo not found: {repo}")
+            meta.raise_for_status()
+            branch = meta.json().get("default_branch", "main")
+
+        r = client.get(
+            f"https://api.github.com/repos/{repo}/commits/{branch}",
+            headers=headers,
+        )
+        if r.status_code == 404:
+            raise HTTPException(404, f"Branch not found: {repo}@{branch}")
+        r.raise_for_status()
+        c = r.json()
+
+    commit = c.get("commit", {})
+    author = commit.get("author", {}) or {}
+    return {
+        "repo": repo,
+        "branch": branch,
+        "sha": c.get("sha"),
+        "short_sha": (c.get("sha") or "")[:7],
+        "message": (commit.get("message") or "").splitlines()[0] if commit.get("message") else "",
+        "author_name": author.get("name"),
+        "committed_at": author.get("date"),
+        "html_url": c.get("html_url"),
+    }

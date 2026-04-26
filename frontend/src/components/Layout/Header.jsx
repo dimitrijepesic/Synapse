@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Link } from 'react-router-dom';
+import GitHubAccount from './GitHubAccount';
 
 export default function Header({ activePage }) {
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -41,9 +42,7 @@ export default function Header({ activePage }) {
           </nav>
         </div>
         <div className="flex items-center gap-2 sm:gap-4">
-          <div className="w-7 h-7 sm:w-8 sm:h-8 rounded-full border border-white/20 bg-white/10 ml-1 sm:ml-2 flex items-center justify-center text-zinc-300">
-            <span className="material-symbols-outlined text-[16px] sm:text-[18px]">person</span>
-          </div>
+          <GitHubAccount />
         </div>
       </div>
       {/* Mobile nav drawer */}

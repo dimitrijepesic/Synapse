@@ -113,6 +113,7 @@ app.include_router(auth_router)
 # --- request models ---
 class AnalyzeRequest(BaseModel):
     repo_url: str
+    force: bool = False
 
 class PredictImpactRequest(BaseModel):
     node_id: str
@@ -192,6 +193,11 @@ def analyze(body: AnalyzeRequest, synapsis_sid: str | None = Cookie(default=None
     # Derive a stable graph_id from the repo name
     graph_id = repo_name.lower().replace("-swift", "").replace("-", "_")
 
+    # If forcing a refresh, drop the cached graph and any associated cluster cache
+    if body.force:
+        GRAPHS.pop(graph_id, None)
+        CLUSTERS.pop(graph_id, None)
+
     # If already analyzed, return cached
     if graph_id in GRAPHS:
         g = GRAPHS[graph_id]
@@ -201,6 +207,8 @@ def analyze(body: AnalyzeRequest, synapsis_sid: str | None = Cookie(default=None
             "status": "ready",
             "node_count": len(g["nodes"]),
             "edge_count": len(g["edges"]),
+            "repo_url": g.get("repo_url"),
+            "repo_full_name": g.get("repo_full_name"),
         }
 
     token = get_token_from_cookie(synapsis_sid)
@@ -230,6 +238,8 @@ def analyze(body: AnalyzeRequest, synapsis_sid: str | None = Cookie(default=None
         print(f"[analyze] building call graph ...")
         graph = build_call_graph(ir)
         graph["graph_id"] = graph_id
+        graph["repo_url"] = f"https://github.com/{full_name}"
+        graph["repo_full_name"] = full_name
 
         # Step 3: Inline code snippets
         snippets_ok = 0
@@ -261,6 +271,8 @@ def analyze(body: AnalyzeRequest, synapsis_sid: str | None = Cookie(default=None
             "status": "ready",
             "node_count": len(graph["nodes"]),
             "edge_count": len(graph["edges"]),
+            "repo_url": graph["repo_url"],
+            "repo_full_name": graph["repo_full_name"],
         }
     except subprocess.CalledProcessError as e:
         stderr = e.stderr.decode()[:500]
@@ -379,6 +391,18 @@ def get_graph(graph_id: str):
     if g is None:
         raise HTTPException(404, f"Unknown graph: {graph_id}. Available: {list(GRAPHS.keys())}")
     return g
+
+
+@app.get("/graph/{graph_id}/repo-info")
+def graph_repo_info(graph_id: str):
+    g = GRAPHS.get(graph_id)
+    if g is None:
+        raise HTTPException(404, f"Unknown graph: {graph_id}")
+    return {
+        "graph_id": graph_id,
+        "repo_url": g.get("repo_url"),
+        "repo_full_name": g.get("repo_full_name"),
+    }
 
 @app.get("/node/{node_id:path}")
 def get_node(node_id: str):
