@@ -1,6 +1,6 @@
 [x] - otkohorisati kohor
 [ ] - landing page
 [ ] - ai generisanje tagova za grupisanje u celine ~ on mount
-[ ] - srediti boje i ikonice
-[ ] - procitati use.md
-[ ] - srediti desni bonus
+[x] - srediti boje i ikonice
+[x] - procitati use.md
+[x] - srediti desni bonus

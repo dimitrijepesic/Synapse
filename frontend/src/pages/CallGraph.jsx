@@ -3,7 +3,6 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { Header, RepoFooter } from '../components/Layout';
 import useGraphStore from '../store/graphStore';
 import useProjectStore from '../store/projectStore';
-import { defaultFileTree, SOURCE_FILES } from '../data/mockData';
 import { API_BASE, ENDPOINTS } from '../types/api';
 import { FilterPanel } from '../components/FilterPanel';
 
@@ -563,7 +562,7 @@ export default function Workspace() {
               onClick={toggleClusterView}
               className={`rounded-lg px-3 py-1.5 flex items-center gap-1.5 transition-colors border ${
                 clusterView
-                  ? 'bg-indigo-600 text-white border-indigo-600 hover:bg-indigo-700 shadow-sm'
+                  ? 'bg-deep-olive text-white border-deep-olive hover:bg-deep-olive/90 shadow-sm'
                   : 'glass-panel text-gray-500 hover:text-gray-900 border-transparent'
               }`}
               title={clusterView ? 'Switch to flat view' : 'Switch to package view'}
@@ -1106,7 +1105,7 @@ function SideNav({
             onClick={onToggleFilterPanel}
             className={`${railBtnBase} relative ${
               filterPanelOpen || activeFilterCount > 0
-                ? 'text-indigo-600 bg-indigo-50'
+                ? 'text-deep-olive bg-soft-sage/30'
                 : 'text-gray-400 hover:bg-soft-sage/20 hover:text-deep-olive'
             }`}
             title="Filter graph nodes"
@@ -1114,7 +1113,7 @@ function SideNav({
             <span className={railIcon}>filter_list</span>
             <span className={railLabel}>Filter</span>
             {activeFilterCount > 0 && (
-              <span className="absolute top-0.5 right-1 text-[9px] px-1 rounded-full bg-indigo-600 text-white font-medium leading-tight">
+              <span className="absolute top-0.5 right-1 text-[9px] px-1 rounded-full bg-deep-olive text-white font-medium leading-tight">
                 {activeFilterCount}
               </span>
             )}
@@ -1754,6 +1753,28 @@ const CompactNodeCard = memo(function CompactNodeCard({ node, isSelected, isDimm
   );
 });
 
+// --- AI text highlighter: function names, qualified methods, `code` spans ---
+const HIGHLIGHT_RE = /(`[^`]+`)|([A-Za-z_]\w+(?:\.[A-Za-z_]\w*)+)|([a-zA-Z_]\w*\(\))/g;
+function highlightTokens(text) {
+  if (text == null || text === '') return text;
+  const out = [];
+  let last = 0;
+  let key = 0;
+  let m;
+  HIGHLIGHT_RE.lastIndex = 0;
+  while ((m = HIGHLIGHT_RE.exec(text)) !== null) {
+    if (m.index > last) out.push(text.slice(last, m.index));
+    let token = m[0];
+    if (token.startsWith('`') && token.endsWith('`')) token = token.slice(1, -1);
+    out.push(
+      <span key={key++} className="font-semibold text-primary">{token}</span>
+    );
+    last = m.index + m[0].length;
+  }
+  if (last < text.length) out.push(text.slice(last));
+  return out;
+}
+
 // --- Code Panel ---
 
 function CodePanel({ node, open, onClose }) {
@@ -1981,9 +2002,9 @@ function CodePanel({ node, open, onClose }) {
             <button
               onClick={handleSummarize}
               disabled={!node || summaryLoading}
-              className="flex items-center gap-1 text-[10px] font-label-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-2 py-1 rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 text-[12px] font-label-sm text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className={`material-symbols-outlined text-[12px] ${summaryLoading ? 'animate-spin' : ''}`}>
+              <span className={`material-symbols-outlined text-[14px] ${summaryLoading ? 'animate-spin' : ''}`}>
                 {summaryLoading ? 'progress_activity' : 'auto_awesome'}
               </span>
               {summaryLoading ? 'Summarizing…' : 'Summarize'}
@@ -1991,9 +2012,9 @@ function CodePanel({ node, open, onClose }) {
             <button
               onClick={handleImpactAnalysis}
               disabled={!node || impactLoading}
-              className="flex items-center gap-1 text-[10px] font-label-sm text-gray-600 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-2 py-1 rounded border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="flex items-center gap-1.5 text-[12px] font-label-sm text-gray-700 hover:text-gray-900 hover:bg-gray-50 transition-colors bg-white px-3 py-1.5 rounded-md border border-gray-300 disabled:opacity-50 disabled:cursor-not-allowed"
             >
-              <span className={`material-symbols-outlined text-[12px] ${impactLoading ? 'animate-spin' : ''}`}>
+              <span className={`material-symbols-outlined text-[14px] ${impactLoading ? 'animate-spin' : ''}`}>
                 {impactLoading ? 'progress_activity' : 'bolt'}
               </span>
               {impactLoading ? 'Analyzing…' : 'Impact'}
@@ -2007,7 +2028,7 @@ function CodePanel({ node, open, onClose }) {
                 <p className="font-body-md text-sm text-rose-600 mb-3">{summaryError}</p>
               )}
               {summary && (
-                <div className="mb-3">
+                <div className="mb-6">
                   <div className="flex items-center gap-1 mb-1.5">
                     <span className="material-symbols-outlined text-[12px] text-primary">auto_awesome</span>
                     <span className="font-label-sm text-[10px] text-primary uppercase tracking-wider">AI Summary</span>
@@ -2022,10 +2043,10 @@ function CodePanel({ node, open, onClose }) {
                         style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
                       >
                         {/* Invisible full text reserves final height up-front */}
-                        <p aria-hidden className="invisible m-0">{summary}</p>
+                        <p aria-hidden className="invisible m-0">{highlightTokens(summary)}</p>
                         {/* Visible typed portion overlays at the same position */}
                         <p className="absolute inset-0 m-0">
-                          {displayedSummary}
+                          {highlightTokens(displayedSummary)}
                           {displayedSummary.length < summary.length && (
                             <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
                           )}
@@ -2039,7 +2060,7 @@ function CodePanel({ node, open, onClose }) {
                 <p className="font-body-md text-sm text-rose-600 mb-3">{impactError}</p>
               )}
               {(impact || impactNarrative) && (
-                <div className="mb-3 px-3 py-2 rounded bg-amber-50 border border-amber-200">
+                <div className="mb-6 px-3 py-2 rounded bg-amber-50 border border-amber-200">
                   <div className="flex items-center gap-1 mb-1.5">
                     <span className="material-symbols-outlined text-[12px] text-amber-600">bolt</span>
                     <span className="font-label-sm text-[10px] text-amber-700 uppercase tracking-wider">Impact Analysis</span>
@@ -2054,9 +2075,9 @@ function CodePanel({ node, open, onClose }) {
                           className="relative text-[15px] leading-relaxed text-gray-800 whitespace-pre-wrap"
                           style={{ fontFamily: "'Newsreader', 'Iowan Old Style', Georgia, serif", fontWeight: 400, letterSpacing: '0.005em' }}
                         >
-                          <p aria-hidden className="invisible m-0">{impactNarrative}</p>
+                          <p aria-hidden className="invisible m-0">{highlightTokens(impactNarrative)}</p>
                           <p className="absolute inset-0 m-0">
-                            {displayedImpact}
+                            {highlightTokens(displayedImpact)}
                             {displayedImpact.length < impactNarrative.length && (
                               <span className="inline-block w-[1px] h-[1em] bg-gray-700 ml-0.5 align-text-bottom animate-pulse" />
                             )}
@@ -2166,7 +2187,7 @@ function CodePanel({ node, open, onClose }) {
 // --- Full-panel File Overlay (whole file view that covers the workspace) ---
 
 function FileOverlay({ file, nodes, sourceFiles: dynamicSources, onClose, onJumpToFunction }) {
-  const source = (dynamicSources && dynamicSources[file]) || SOURCE_FILES[file] || '';
+  const source = (dynamicSources && dynamicSources[file]) || '';
   const fnNodes = nodes.filter((n) => n.filePath === file).sort((a, b) => a.startLine - b.startLine);
   const totalLines = source ? source.split('\n').length : 0;
   const tests = fnNodes.filter((n) => n.category === 'test').length;

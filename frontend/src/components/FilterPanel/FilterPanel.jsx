@@ -1,7 +1,5 @@
-import { useState, useEffect, useCallback, useRef } from 'react';
+import { useState, useEffect } from 'react';
 import useGraphStore from '../../store/graphStore';
-
-const DEBOUNCE_MS = 300;
 
 function CheckboxGroup({ label, icon, options, selected, onChange }) {
   const [open, setOpen] = useState(false);
@@ -23,7 +21,7 @@ function CheckboxGroup({ label, icon, options, selected, onChange }) {
         <span className="material-symbols-outlined text-[14px] text-gray-400">{icon}</span>
         <span className="text-[12px] text-gray-700 flex-1 font-medium">{label}</span>
         {selected.length > 0 && (
-          <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">
+          <span className="text-[10px] bg-soft-sage/40 text-deep-olive px-1.5 py-0.5 rounded-full font-medium">
             {selected.length}
           </span>
         )}
@@ -44,8 +42,8 @@ function CheckboxGroup({ label, icon, options, selected, onChange }) {
                 onClick={() => toggle(opt)}
                 className={`text-[10px] px-2 py-0.5 rounded border transition-colors ${
                   on
-                    ? 'bg-indigo-600 text-white border-indigo-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-indigo-300 hover:text-gray-900'
+                    ? 'bg-deep-olive text-white border-deep-olive'
+                    : 'bg-white text-gray-600 border-gray-200 hover:border-soft-sage hover:text-deep-olive'
                 }`}
               >
                 {opt}
@@ -83,7 +81,7 @@ function SearchableMultiSelect({ label, icon, options, selected, onChange }) {
         <span className="material-symbols-outlined text-[14px] text-gray-400">{icon}</span>
         <span className="text-[12px] text-gray-700 flex-1 font-medium">{label}</span>
         {selected.length > 0 && (
-          <span className="text-[10px] bg-indigo-100 text-indigo-700 px-1.5 py-0.5 rounded-full font-medium">
+          <span className="text-[10px] bg-soft-sage/40 text-deep-olive px-1.5 py-0.5 rounded-full font-medium">
             {selected.length}
           </span>
         )}
@@ -100,7 +98,7 @@ function SearchableMultiSelect({ label, icon, options, selected, onChange }) {
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={`Search ${label.toLowerCase()}...`}
-            className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 mb-1.5 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+            className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 mb-1.5 focus:border-soft-sage focus:ring-1 focus:ring-soft-sage/40 outline-none"
           />
           <div className="max-h-32 overflow-y-auto space-y-0.5">
             {filtered.length === 0 ? (
@@ -113,11 +111,11 @@ function SearchableMultiSelect({ label, icon, options, selected, onChange }) {
                     key={opt}
                     onClick={() => toggle(opt)}
                     className={`w-full text-left flex items-center gap-1.5 px-2 py-1 rounded text-[11px] transition-colors ${
-                      on ? 'bg-indigo-50 text-indigo-700' : 'text-gray-600 hover:bg-gray-100'
+                      on ? 'bg-soft-sage/25 text-deep-olive' : 'text-gray-600 hover:bg-gray-100'
                     }`}
                   >
                     <span className={`w-3 h-3 rounded border flex items-center justify-center shrink-0 ${
-                      on ? 'bg-indigo-600 border-indigo-600' : 'border-gray-300'
+                      on ? 'bg-deep-olive border-deep-olive' : 'border-gray-300'
                     }`}>
                       {on && <span className="material-symbols-outlined text-[10px] text-white">check</span>}
                     </span>
@@ -144,7 +142,7 @@ function TextFilter({ label, icon, value, onChange, placeholder }) {
         value={value || ''}
         onChange={(e) => onChange(e.target.value || null)}
         placeholder={placeholder}
-        className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+        className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 focus:border-soft-sage focus:ring-1 focus:ring-soft-sage/40 outline-none"
       />
     </div>
   );
@@ -164,7 +162,7 @@ function RangeFilter({ label, icon, minVal, maxVal, onMinChange, onMaxChange }) 
           value={minVal ?? ''}
           onChange={(e) => onMinChange(e.target.value === '' ? null : Number(e.target.value))}
           placeholder="min"
-          className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+          className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 focus:border-soft-sage focus:ring-1 focus:ring-soft-sage/40 outline-none"
         />
         <span className="text-[10px] text-gray-400">to</span>
         <input
@@ -173,7 +171,7 @@ function RangeFilter({ label, icon, minVal, maxVal, onMinChange, onMaxChange }) 
           value={maxVal ?? ''}
           onChange={(e) => onMaxChange(e.target.value === '' ? null : Number(e.target.value))}
           placeholder="max"
-          className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 focus:border-indigo-400 focus:ring-1 focus:ring-indigo-200 outline-none"
+          className="w-full text-[11px] bg-white border border-gray-200 rounded px-2 py-1 focus:border-soft-sage focus:ring-1 focus:ring-soft-sage/40 outline-none"
         />
       </div>
     </div>
@@ -181,19 +179,23 @@ function RangeFilter({ label, icon, minVal, maxVal, onMinChange, onMaxChange }) 
 }
 
 function ToggleFilter({ label, icon, value, onChange }) {
+  const on = value === true;
   return (
     <div className="border-b border-gray-100 last:border-b-0 px-3 py-2 flex items-center gap-2">
       <span className="material-symbols-outlined text-[14px] text-gray-400">{icon}</span>
       <span className="text-[12px] text-gray-700 font-medium flex-1">{label}</span>
       <button
-        onClick={() => onChange(value === true ? null : true)}
-        className={`relative w-8 h-[18px] rounded-full transition-colors ${
-          value === true ? 'bg-indigo-600' : 'bg-gray-300'
+        type="button"
+        role="switch"
+        aria-checked={on}
+        onClick={() => onChange(on ? null : true)}
+        className={`relative inline-flex shrink-0 h-5 w-9 items-center rounded-full transition-colors duration-200 focus:outline-none focus:ring-2 focus:ring-soft-sage/50 ${
+          on ? 'bg-deep-olive' : 'bg-gray-300 hover:bg-gray-400'
         }`}
       >
         <span
-          className={`absolute top-[2px] w-[14px] h-[14px] rounded-full bg-white shadow transition-transform ${
-            value === true ? 'translate-x-[16px]' : 'translate-x-[2px]'
+          className={`inline-block h-4 w-4 rounded-full bg-white shadow-sm transform transition-transform duration-200 ${
+            on ? 'translate-x-[18px]' : 'translate-x-[2px]'
           }`}
         />
       </button>
@@ -214,22 +216,6 @@ export default function FilterPanel({ open, onClose }) {
     }
   }, [open, graphId]);
 
-  // Debounced auto-apply
-  const timerRef = useRef(null);
-  const applyDebounced = useCallback(() => {
-    if (timerRef.current) clearTimeout(timerRef.current);
-    timerRef.current = setTimeout(() => applyFilters(), DEBOUNCE_MS);
-  }, [applyFilters]);
-
-  // Apply filters whenever they change
-  const prevFiltersRef = useRef(filters);
-  useEffect(() => {
-    if (prevFiltersRef.current !== filters) {
-      prevFiltersRef.current = filters;
-      applyDebounced();
-    }
-  }, [filters, applyDebounced]);
-
   const activeCount = Object.keys(filters).length;
   const opts = filterOptions || {};
 
@@ -239,27 +225,27 @@ export default function FilterPanel({ open, onClose }) {
 
   return (
     <div
-      className={`absolute top-12 sm:top-14 right-2 sm:right-4 z-30 transition-all duration-200 ${
-        open ? 'opacity-100 translate-x-0' : 'opacity-0 translate-x-4 pointer-events-none'
+      className={`absolute top-2 sm:top-4 left-2 sm:left-4 z-30 transition-all duration-200 ${
+        open ? 'opacity-100 translate-x-0' : 'opacity-0 -translate-x-4 pointer-events-none'
       }`}
       style={{ width: 280 }}
     >
-      <div className="bg-white rounded-xl shadow-xl border border-gray-200 max-h-[calc(100vh-120px)] flex flex-col overflow-hidden">
+      <div className="glass-panel rounded-xl shadow-xl border border-gray-200 max-h-[calc(100vh-120px)] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="px-3 py-2.5 border-b border-gray-100 flex items-center gap-2 shrink-0">
-          <span className="material-symbols-outlined text-[16px] text-indigo-600">filter_list</span>
-          <span className="text-[13px] font-medium text-gray-900 flex-1">Filters</span>
+          <span className="material-symbols-outlined text-[16px] text-deep-olive">filter_list</span>
+          <span className="font-label-md text-[10px] text-gray-500 uppercase tracking-wider flex-1">Filters</span>
           {activeCount > 0 && (
             <button
               onClick={handleClear}
-              className="text-[10px] text-indigo-600 hover:text-indigo-800 font-medium"
+              className="font-label-sm text-[10px] uppercase tracking-wider text-deep-olive hover:text-deep-olive/70"
             >
               Clear all
             </button>
           )}
           <button
             onClick={onClose}
-            className="p-0.5 text-gray-400 hover:text-gray-700 rounded hover:bg-gray-100"
+            className="p-0.5 text-gray-400 hover:text-deep-olive rounded hover:bg-gray-100 transition-colors"
           >
             <span className="material-symbols-outlined text-[16px]">close</span>
           </button>
@@ -267,13 +253,13 @@ export default function FilterPanel({ open, onClose }) {
 
         {/* Summary bar */}
         {filteredCounts && (
-          <div className="px-3 py-1.5 bg-indigo-50 border-b border-indigo-100 flex items-center gap-1.5 shrink-0">
+          <div className="px-3 py-1.5 bg-soft-sage/20 border-b border-soft-sage/40 flex items-center gap-1.5 shrink-0">
             {filterLoading ? (
-              <span className="material-symbols-outlined text-[12px] text-indigo-500 animate-spin">progress_activity</span>
+              <span className="material-symbols-outlined text-[12px] text-deep-olive/70 animate-spin">progress_activity</span>
             ) : (
-              <span className="material-symbols-outlined text-[12px] text-indigo-500">info</span>
+              <span className="material-symbols-outlined text-[12px] text-deep-olive/70">info</span>
             )}
-            <span className="text-[11px] text-indigo-700">
+            <span className="text-[11px] text-deep-olive">
               Showing {filteredCounts.filtered_nodes} of {filteredCounts.total_nodes} nodes
             </span>
           </div>
@@ -373,6 +359,34 @@ export default function FilterPanel({ open, onClose }) {
               />
             </>
           )}
+        </div>
+
+        {/* Footer — Apply / Reset */}
+        <div className="px-3 py-2 border-t border-gray-100 bg-white flex items-center gap-2 shrink-0">
+          <button
+            onClick={handleClear}
+            disabled={activeCount === 0}
+            className="font-label-sm text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md border border-gray-300 text-gray-600 hover:text-deep-olive hover:border-soft-sage transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+          >
+            Reset
+          </button>
+          <button
+            onClick={() => applyFilters()}
+            disabled={filterLoading}
+            className="flex-1 flex items-center justify-center gap-1.5 font-label-sm text-[11px] uppercase tracking-wider px-3 py-1.5 rounded-md bg-deep-olive text-white hover:bg-deep-olive/90 transition-colors disabled:opacity-50 disabled:cursor-not-allowed"
+          >
+            {filterLoading ? (
+              <>
+                <span className="material-symbols-outlined text-[14px] animate-spin">progress_activity</span>
+                Applying…
+              </>
+            ) : (
+              <>
+                <span className="material-symbols-outlined text-[14px]">filter_alt</span>
+                Apply Filters
+              </>
+            )}
+          </button>
         </div>
       </div>
     </div>

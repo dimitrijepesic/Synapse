@@ -1,8 +1,7 @@
 import { create } from 'zustand';
-import { defaultProject } from '../data/mockData';
 
 const useProjectStore = create((set) => ({
-  project: { ...defaultProject },
+  project: { name: null, branch: null },
 
   ui: {
     nodeEditorOpen: false,

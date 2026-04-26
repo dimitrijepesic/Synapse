@@ -1,6 +1,5 @@
 import { create } from 'zustand';
 import dagre from 'dagre';
-import { defaultNodes, defaultEdges } from '../data/mockData';
 
 const NODE_WIDTH = 200;
 const NODE_HEIGHT = 120;
@@ -258,8 +257,8 @@ const CLUSTER_NODE_WIDTH = 240;
 const CLUSTER_NODE_HEIGHT = 180;
 
 const useGraphStore = create((set, get) => ({
-  nodes: defaultNodes,
-  edges: defaultEdges,
+  nodes: [],
+  edges: [],
   selectedNodeId: null,
   selectedFile: null,
   sourceFiles: {},
@@ -467,13 +466,13 @@ const useGraphStore = create((set, get) => ({
       }));
       return;
     }
-    // First visit: compute layout for this view from current graph data.
-    const targets = _computeAutoLayoutTargets(nodes, edges);
-    set((state) => ({
-      activeView: viewKey,
-      nodes: state.nodes.map((n) => (targets[n.id] ? { ...n, position: targets[n.id] } : n)),
-      viewLayouts: { ...state.viewLayouts, [viewKey]: targets },
-    }));
+    // First visit (or freshly-loaded graph): mark the view active and run the
+    // animated dagre auto-layout so the BFS positions from `loadGraph` tween
+    // into the proper dagre layout.
+    set({ activeView: viewKey });
+    if (nodes.length > 0) {
+      get().autoLayout({ animate: true });
+    }
   },
 
   setViewCamera: (viewKey, camera) => {
