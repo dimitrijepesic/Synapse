@@ -153,7 +153,7 @@ function computeSelfLoopArrow(node) {
 
 export default function Workspace() {
   const { nodes, edges, selectedNodeId, selectedFile, selectNode, selectFile, closeFile, moveNode, addNode, addEdge, autoLayout, loadGraph, enterView, filters, filteredCounts, sourceFiles, loading: graphLoading, error: graphError, graphId, metadata, clusters, clusterEdges, nodeClusterMap, expandedClusters, clusterView, clusterPositions, toggleClusterView, toggleCluster, drillIntoCluster, exitDrill, drillStack, portNodes, portEdges, drillPositions, viewCameras, setViewCamera, viewLayouts, importanceThreshold } = useGraphStore();
-  const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, setActiveSideTab, setProject } = useProjectStore();
+  const { project, ui, openNodeEditor, closeNodeEditor, toggleCodePanel, closeCodePanel, setActiveSideTab, setProject } = useProjectStore();
   const [searchParams] = useSearchParams();
 
   // Derive drill state from the stack
@@ -280,6 +280,7 @@ export default function Workspace() {
   }, []);
 
   const handleInsights = useCallback(() => {
+    closeCodePanel();
     setInsightsOpen(true);
     setHotspotsLoading(true);
     setDeadCodeLoading(true);
@@ -295,7 +296,11 @@ export default function Workspace() {
       .then((d) => setDeadCodeData(d.results || []))
       .catch(() => setDeadCodeData([]))
       .finally(() => setDeadCodeLoading(false));
-  }, []);
+  }, [closeCodePanel]);
+
+  useEffect(() => {
+    if (ui.codePanelOpen) setInsightsOpen(false);
+  }, [ui.codePanelOpen]);
 
   // Direct neighbors (callers + callees) of the selected node — used for highlighting
   const neighborIds = (() => {
@@ -2080,17 +2085,22 @@ function PortNode({ port, position }) {
   const isIncoming = port.direction === 'incoming';
   return (
     <div
-      className="absolute z-10 flex items-center gap-2"
+      className="absolute z-10"
       style={{
         top: position.y,
         left: position.x,
+        width: 28,
+        height: 28,
       }}
     >
-      {!isIncoming && (
-        <div className="w-7 h-7 rounded-full bg-gray-900 border-2 border-gray-700 shadow-md shrink-0" title={`${port.edgeCount} connection${port.edgeCount > 1 ? 's' : ''} to ${port.clusterLabel}`} />
-      )}
       <div
-        className={`flex flex-col ${isIncoming ? 'items-end' : 'items-start'}`}
+        className="w-7 h-7 rounded-full bg-gray-900 border-2 border-gray-700 shadow-md"
+        title={`${port.edgeCount} connection${port.edgeCount > 1 ? 's' : ''} ${isIncoming ? 'from' : 'to'} ${port.clusterLabel}`}
+      />
+      <div
+        className={`absolute top-1/2 -translate-y-1/2 flex flex-col ${
+          isIncoming ? 'items-start left-full ml-2' : 'items-end right-full mr-2'
+        }`}
         style={{ whiteSpace: 'nowrap' }}
       >
         <span className="text-[10px] text-gray-400 font-medium leading-tight">
@@ -2103,9 +2113,6 @@ function PortNode({ port, position }) {
           {port.edgeCount} call{port.edgeCount > 1 ? 's' : ''}
         </span>
       </div>
-      {isIncoming && (
-        <div className="w-7 h-7 rounded-full bg-gray-900 border-2 border-gray-700 shadow-md shrink-0" title={`${port.edgeCount} connection${port.edgeCount > 1 ? 's' : ''} from ${port.clusterLabel}`} />
-      )}
     </div>
   );
 }

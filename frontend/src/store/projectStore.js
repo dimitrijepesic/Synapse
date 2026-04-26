@@ -31,6 +31,13 @@ const useProjectStore = create((set) => ({
       ui: { ...state.ui, codePanelOpen: !state.ui.codePanelOpen },
     })),
 
+  closeCodePanel: () =>
+    set((state) =>
+      state.ui.codePanelOpen
+        ? { ui: { ...state.ui, codePanelOpen: false } }
+        : state,
+    ),
+
   setActiveSideTab: (tab) =>
     set((state) => ({
       ui: { ...state.ui, activeSideTab: tab },
